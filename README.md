@@ -1,93 +1,66 @@
 # vLLM Issue Tracker
 
-A Python pipeline + interactive dashboard for analyzing the vLLM GitHub issue pool and generating prioritized roadmap recommendations for the vLLM team.
+**[View the live dashboard](https://zlxi02.github.io/vllm-tracker/)**
 
-## What it does
+Analyzes the vLLM GitHub issue pool and generates prioritized roadmap recommendations. Classifies ~14,500 issues by SIG group, model, hardware, and type, then surfaces what the vLLM team should focus on next.
 
-1. **Loads** issue data from Hex/Databricks CSV exports into SQLite
-2. **Classifies** issues by type, SIG group, models, and hardware using LLM (Claude Sonnet)
-3. **Summarizes** issue clusters per SIG with priority rankings
-4. **Generates** a roadmap-style HTML report with executive summary
-5. **Dashboard** with searchable issue table, daily newsletter, roadmap tab, and resource links
+## Dashboard
 
-## Quick start
+The dashboard has four tabs:
+
+- **Dashboard** — Searchable issue table with filters (type, SIG, hardware, model, failure mode)
+- **Newsfeed** — Daily newsletter-style summaries of notable GitHub issues
+- **Roadmap** — Prioritized recommendations by SIG, generated from issue clustering
+- **Resources** — Release schedule, project links, community
+
+## Refreshing data
+
+Requires Python 3.9+ and an Anthropic API key.
 
 ```bash
-# Install dependencies
+# One-time setup
 pip install -e .
+cp .env.example .env   # add your ANTHROPIC_API_KEY
 
-# Set up API key
-cp .env.example .env
-# Edit .env with your Anthropic API key
-
-# Drop fresh CSV from Hex into data/
+# Drop fresh CSV export from Hex into data/
 cp ~/Downloads/github_issues.csv data/github_issues.csv
 
-# Run the full pipeline (incremental by default)
+# Run the pipeline (incremental by default — only processes new/changed issues)
 python3 -m vllm_issue_tracker.cli refresh
 
-# Rebuild dashboard issue table
+# Rebuild dashboard data
 python3 dashboard/build_data.py
 
-# Serve the dashboard
-python3 dashboard/serve.py
-# Open http://localhost:8000
+# Deploy
+git add dashboard/data/ dashboard/report.html
+git commit -m "Refresh data"
+git push   # auto-deploys to GitHub Pages
 ```
 
-## Pipeline commands
+A full pipeline run costs ~$12 on Claude Sonnet. Incremental runs (daily refresh) cost ~$1-2.
 
-```bash
-# Full pipeline (load → classify → summarize → rank → build-roadmap)
-python3 -m vllm_issue_tracker.cli refresh          # incremental (default)
-python3 -m vllm_issue_tracker.cli refresh --full    # full rebuild (prompts before wiping)
-
-# Individual steps
-python3 -m vllm_issue_tracker.cli load              # CSV → SQLite (incremental by default)
-python3 -m vllm_issue_tracker.cli load --full        # full reload
-python3 -m vllm_issue_tracker.cli dashboard-classify # LLM classify all issues (~$9 Sonnet)
-python3 -m vllm_issue_tracker.cli dashboard-summarize # per-SIG cluster summaries
-python3 -m vllm_issue_tracker.cli dashboard-rank     # priority ranking + executive summary
-python3 -m vllm_issue_tracker.cli build-roadmap      # render HTML report
-
-# Utilities
-python3 -m vllm_issue_tracker.cli quality-check      # data quality metrics
-python3 dashboard/build_data.py                      # rebuild dashboard JSON from SQLite
-```
-
-## Data sources
-
-- `data/github_issues.csv` — required input (full dump from Hex/Databricks)
-- `data/users.csv` and `data/issue_comments.csv` — optional enrichments
-- `data/preview/*.csv` — small sample files for tests
-
-## Architecture
+## Pipeline
 
 ```
 data/github_issues.csv
-    ↓
-[ingest.py] Parse + regex classify → SQLite
-    ↓
-[llm_classify.py] LLM classification (type, SIG, models, hardware)
-    ↓
-[llm_classify.py] Per-SIG summarization → dashboard_summary.json
-    ↓
-[llm_classify.py] Priority ranking + executive summary
-    ↓
-[report.py] Render roadmap HTML → outputs/roadmap.html + dashboard/report.html
-
-dashboard/build_data.py → dashboard/data/dashboard_data.json (for issue table)
+    → [load] CSV → SQLite with regex enrichment
+    → [dashboard-classify] LLM classifies type, SIG, models, hardware
+    → [dashboard-summarize] LLM clusters issues per SIG with priorities
+    → [dashboard-rank] Executive summary + SIG priority ranking
+    → [build-roadmap] Render roadmap HTML
+    → [build_data.py] Export SQLite → dashboard JSON
 ```
 
-## Dashboard tabs
+### Commands
 
-- **Dashboard** — Searchable issue table with filters (type, SIG, hardware, model, failure mode)
-- **Newsfeed** — Daily newsletter-style summaries of GitHub issues
-- **Roadmap** — LLM-generated prioritized roadmap report by SIG
-- **Resources** — Release schedule, project links, community links
-
-## Cost
-
-- Full classify (14k issues): ~$9 on Sonnet
-- Incremental classify (new issues only): ~$0.02 per batch of 50
-- Summarize + rank: ~$3.50
-- Full pipeline: ~$12.50
+```bash
+python3 -m vllm_issue_tracker.cli refresh            # full pipeline (incremental)
+python3 -m vllm_issue_tracker.cli refresh --full      # full rebuild (prompts before wiping)
+python3 -m vllm_issue_tracker.cli load                # CSV → SQLite only
+python3 -m vllm_issue_tracker.cli dashboard-classify  # LLM classify (~$9)
+python3 -m vllm_issue_tracker.cli dashboard-summarize # per-SIG summaries (~$3)
+python3 -m vllm_issue_tracker.cli dashboard-rank      # priority ranking (~$0.50)
+python3 -m vllm_issue_tracker.cli build-roadmap       # render HTML
+python3 -m vllm_issue_tracker.cli quality-check       # data quality metrics
+python3 dashboard/build_data.py                       # rebuild dashboard JSON
+```
