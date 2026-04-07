@@ -17,4 +17,5 @@ class SPAHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
 
-http.server.test(HandlerClass=SPAHandler, port=8000)
+port = int(os.environ.get("PORT", 8000))
+http.server.test(HandlerClass=SPAHandler, port=port)

@@ -27,9 +27,8 @@ data/previous-data/
 !data/preview/
 !data/preview/*.csv
 
-# Generated dashboard data (rebuilt by build_data.py and build-roadmap)
-dashboard/data/
-dashboard/report.html
+# Generated dashboard data — committed for static hosting (Railway/Vercel)
+# Rebuild with: python3 dashboard/build_data.py && python3 -m vllm_issue_tracker.cli build-roadmap
 
 # Session / IDE files
 .claude/
