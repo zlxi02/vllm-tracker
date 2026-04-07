@@ -88,7 +88,15 @@ def render_roadmap_html(
     executive_summary = summary.get("executive_summary", [])
     summary_html = ""
     if executive_summary:
-        bullets = "".join(f"<li>{_linkify_issues(b)}</li>" for b in executive_summary)
+        bullet_items = []
+        for b in executive_summary:
+            if isinstance(b, dict) and "topic" in b:
+                topic = html.escape(b["topic"])
+                detail = _linkify_issues(b["detail"])
+                bullet_items.append(f"<li><strong>{topic}:</strong> {detail}</li>")
+            else:
+                bullet_items.append(f"<li>{_linkify_issues(str(b))}</li>")
+        bullets = "".join(bullet_items)
         summary_html = f"""
     <section class="hero" style="border-left: 4px solid var(--primary);">
       <h2 style="margin-bottom: 8px;">Executive Summary</h2>

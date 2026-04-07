@@ -349,6 +349,8 @@ YOUR TASK:
    Weight strategic importance and user impact more heavily than raw issue count.
 
 2. WRITE an executive summary (4-8 bullet points) for the entire roadmap:
+   - Each bullet has a "topic" (short bold label, 2-5 words) and "detail" \
+(one sentence explaining what is happening and why it matters)
    - Lead with the single most critical finding across all SIGs
    - Highlight cross-cutting themes (e.g. "Blackwell support issues span 3 SIGs")
    - Call out the most severe user-facing problems
@@ -367,9 +369,8 @@ Return JSON only — no markdown fences, no commentary:
     }}
   ],
   "executive_summary": [
-    "Bullet point 1 — the most critical finding",
-    "Bullet point 2",
-    "..."
+    {{"topic": "Short bold topic label", "detail": "What is happening and why it matters"}},
+    {{"topic": "Another topic", "detail": "Explanation of the issue"}}
   ]
 }}
 """

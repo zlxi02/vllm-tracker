@@ -184,21 +184,27 @@ def command_refresh(args: argparse.Namespace) -> int:
     from .llm_classify import run_dashboard_classify
     run_dashboard_classify(settings, force=False)
 
-    # Step 3: Summarize (all SIGs — could optimize to changed-only later)
+    # Step 3: Summarize (cluster issues per SIG)
     print("=" * 60)
-    print("Step 3/5: Summarizing SIGs...")
+    print("Step 3/6: Summarizing SIGs...")
     from .llm_classify import run_dashboard_summarize
     run_dashboard_summarize(settings)
 
-    # Step 4: Rank
+    # Step 4: Prioritize (enrich clusters with roadmap/release context)
     print("=" * 60)
-    print("Step 4/5: Ranking and executive summary...")
+    print("Step 4/6: Prioritizing clusters...")
+    from .llm_classify import run_dashboard_prioritize
+    run_dashboard_prioritize(settings)
+
+    # Step 5: Rank (executive summary + SIG ranking)
+    print("=" * 60)
+    print("Step 5/6: Ranking SIGs and executive summary...")
     from .llm_classify import run_dashboard_rank
     run_dashboard_rank(settings)
 
-    # Step 5: Build HTML
+    # Step 6: Build HTML
     print("=" * 60)
-    print("Step 5/5: Building roadmap report...")
+    print("Step 6/6: Building roadmap report...")
     path = build_roadmap_report(settings)
     dashboard_report = settings.root_dir / "dashboard" / "report.html"
     if dashboard_report.parent.exists():

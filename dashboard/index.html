@@ -1650,11 +1650,19 @@ window.addEventListener("popstate", () => {
   switchPanel(tab);
 });
 
-// Load initial panel from URL
+// Load initial panel from URL or hash (hash used for GitHub Pages 404 redirect)
 {
-  const path = location.pathname.replace(/^\//, "");
   const validTabs = ["dashboard", "newsfeed", "roadmap", "resources"];
-  if (validTabs.includes(path)) switchPanel(path);
+  const hashRoute = location.hash.replace(/^#\/?/, "");
+  const pathRoute = location.pathname.replace(/.*\//, "");
+  const route = hashRoute || pathRoute;
+  if (validTabs.includes(route)) {
+    switchPanel(route);
+    // Clean up hash to use proper URL
+    if (hashRoute && history.replaceState) {
+      history.replaceState(null, "", route);
+    }
+  }
 }
 
 // Pull generated date from roadmap iframe into header
