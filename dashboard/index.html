@@ -1636,17 +1636,20 @@ function switchPanel(tab) {
   if (panel) panel.classList.add("active");
 }
 
+// Detect base path (e.g. "/vllm-tracker" on GitHub Pages, "" locally)
+const _basePath = location.pathname.replace(/\/(dashboard|newsfeed|roadmap|resources|index\.html)?\/?$/, "") || "";
+
 document.querySelectorAll(".sidebar-nav button").forEach(btn => {
   btn.addEventListener("click", () => {
     const tab = btn.dataset.tab;
-    history.pushState(null, "", "/" + tab);
+    history.pushState(null, "", _basePath + "/" + tab);
     switchPanel(tab);
   });
 });
 
 // Handle browser back/forward
 window.addEventListener("popstate", () => {
-  const tab = location.pathname.replace(/^\//, "") || "dashboard";
+  const tab = location.pathname.replace(_basePath + "/", "").replace(/^\//, "") || "dashboard";
   switchPanel(tab);
 });
 
@@ -1654,13 +1657,12 @@ window.addEventListener("popstate", () => {
 {
   const validTabs = ["dashboard", "newsfeed", "roadmap", "resources"];
   const hashRoute = location.hash.replace(/^#\/?/, "");
-  const pathRoute = location.pathname.replace(/.*\//, "");
+  const pathRoute = location.pathname.replace(_basePath + "/", "").replace(/^\//, "");
   const route = hashRoute || pathRoute;
   if (validTabs.includes(route)) {
     switchPanel(route);
-    // Clean up hash to use proper URL
     if (hashRoute && history.replaceState) {
-      history.replaceState(null, "", route);
+      history.replaceState(null, "", _basePath + "/" + route);
     }
   }
 }
