@@ -208,11 +208,12 @@ body {
 .roadmap-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
 .roadmap-frame { width: 100%; flex: 1; border: none; }
 .rm-expand-btn {
-  display: none; position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+  display: none; position: absolute; top: 12px; left: 0;
   background: var(--surface); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0;
-  width: 24px; height: 48px; cursor: pointer; color: var(--text-secondary); font-size: 12px;
+  width: 24px; height: 36px; cursor: pointer; color: var(--text-secondary); font-size: 12px;
   align-items: center; justify-content: center; z-index: 5;
 }
+.rm-expand-btn:hover { background: var(--primary-light); color: var(--primary); }
 .roadmap-sidebar.collapsed ~ .roadmap-main .rm-expand-btn { display: flex; }
 
 
@@ -767,7 +768,7 @@ tr.expanded-row td { padding: 0; }
   </header>
 </div>
   <div class="roadmap-layout">
-    <div class="roadmap-sidebar" id="rm-sidebar">
+    <div class="roadmap-sidebar collapsed" id="rm-sidebar">
       <div class="rm-sidebar-header">
         <span class="rm-sidebar-label">SIG Groups</span>
         <button class="nf-sidebar-toggle" id="rm-sidebar-collapse" title="Collapse sidebar"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="12" y1="4" x2="4" y2="4"/><line x1="12" y1="8" x2="4" y2="8"/><line x1="12" y1="12" x2="4" y2="12"/></svg></button>

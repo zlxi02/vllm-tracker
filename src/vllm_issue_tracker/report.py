@@ -172,11 +172,12 @@ def render_roadmap_html(
     .meta {{ color: var(--text-secondary); font-size: 13px; }}
     .tag {{
       display: inline-block;
-      padding: 1px 8px;
-      border-radius: 4px;
-      font-size: 11px;
+      padding: 0px 5px;
+      border-radius: 3px;
+      font-size: 9px;
       font-weight: 500;
-      margin: 1px 2px 1px 0;
+      margin: 1px 1px 1px 0;
+      line-height: 1.6;
     }}
     .tag-type {{ background: #e7f1ff; color: #084298; }}
     .tag-model {{ background: #e2d9f3; color: #432874; }}
@@ -226,9 +227,9 @@ def render_roadmap_html(
     }}
     .cluster-table tr:hover td {{ background: var(--row-hover); }}
     .cluster-table .col-rank {{ width: 36px; text-align: center; color: var(--text-secondary); }}
-    .cluster-table .col-main {{ width: 33%; }}
-    .cluster-table .col-issues {{ width: 42%; }}
-    .cluster-table .col-tags {{ width: 20%; }}
+    .cluster-table .col-main {{ width: 35%; }}
+    .cluster-table .col-issues {{ width: 50%; }}
+    .cluster-table .col-tags {{ width: 12%; }}
     .main-fix {{ font-weight: 600; font-size: 13px; }}
     .issue-link {{
       display: block;
@@ -290,7 +291,7 @@ def render_roadmap_html(
     a {{ color: var(--primary); text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     .footer {{ color: var(--text-secondary); font-size: 12px; margin-top: 20px; text-align: center; }}
-    @media (max-width: 900px) {{
+    @media (max-width: 600px) {{
       .cluster-table .col-tags {{ display: none; }}
     }}
   </style>
@@ -403,9 +404,9 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
           <thead>
             <tr>
               <th class="col-rank">#</th>
-              <th class="col-main">Main Issue / Fix</th>
-              <th class="col-issues">Issues &amp; Summaries</th>
-              <th class="col-tags">Categories</th>
+              <th class="col-main">Problem</th>
+              <th class="col-issues">Related Issues</th>
+              <th class="col-tags">Tags</th>
             </tr>
           </thead>
           <tbody>
