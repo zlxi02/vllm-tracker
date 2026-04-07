@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Environment / secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+outputs/
+
+# Data (large CSVs, DBs)
+data/*.csv
+data/previous-data/
+*.db
+*.sqlite3
+!data/preview/
+!data/preview/*.csv
+
+# Generated dashboard data (rebuilt by build_data.py and build-roadmap)
+dashboard/data/
+dashboard/report.html
+
+# Session / IDE files
+.claude/
+.engram/

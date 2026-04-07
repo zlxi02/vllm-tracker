@@ -1,0 +1,60 @@
+id,login,type,site_admin,name,company,blog,location,hireable,bio,created_at,updated_at,_fivetran_synced
+56632993,whx-sjtu,User,False,Hexiang Wang,,,,,"Shanghai Jiao Tong University.
+Currently working in Huawei",2019-10-16 09:59:27+00:00,2026-03-11 13:06:32+00:00,2026-03-28 08:08:06.652000+00:00
+47992694,functionstackx,User,False,functionstackx,,,,,,2019-02-25 20:56:55+00:00,2025-12-21 18:30:28+00:00,2026-03-28 08:08:05.241000+00:00
+5481547,mrjbj,User,False,mrjbj,,,,,Fullstack JavaScript developer,2013-09-17 20:53:07+00:00,2026-03-08 18:11:28+00:00,2026-03-28 08:07:32.779000+00:00
+8532103,kasha01,User,False,,My Comfy Sofa,,Space-Time continuum,,,2014-08-23 16:34:47+00:00,2026-03-18 03:48:11+00:00,2026-03-28 08:07:31.168000+00:00
+68294499,Godmook,User,False,Mook,University of Southern California,,Los Angeles,,Engineer,2020-07-14 17:01:56+00:00,2026-03-25 16:02:56+00:00,2026-03-28 08:08:00.219000+00:00
+29830327,Nekofish-L,User,False,Necofish,,,,,,2017-07-02 05:43:46+00:00,2026-03-24 14:57:25+00:00,2026-03-28 08:08:00.089000+00:00
+197056514,Drogon4231,User,False,,,,,,,2025-01-30 09:00:22+00:00,2026-03-05 03:54:44+00:00,2026-03-28 08:08:05.958000+00:00
+17312800,JiantaoXu,User,False,OriginX,Alibaba Group,,HangZhou,,"More hastes, less speed.",2016-02-18 10:08:22+00:00,2026-03-25 04:14:40+00:00,2026-03-28 08:07:55.446000+00:00
+54555896,chengyinie,User,False,Chengyi Nie,@Roblox,,San Mateo,,"MLE at Roblox, PhD in Computer engineering",2019-08-26 20:30:47+00:00,2026-03-21 23:13:01+00:00,2026-03-28 08:08:05.525000+00:00
+157115220,tc-mb,User,False,,,,,,,2024-01-19 10:41:33+00:00,2026-03-12 08:14:10+00:00,2026-03-28 08:07:31.809000+00:00
+22258697,rbavery,User,False,Ryan Avery,@wherobots,,"Seattle, Washington",,,2016-09-17 14:43:08+00:00,2026-03-16 01:05:35+00:00,2026-03-28 08:07:59.192000+00:00
+56071,bbrowning,User,False,Ben Browning,Red Hat,https://thinkingconcurrently.com/,"Cambridge, MA",,,2009-02-19 22:59:31+00:00,2026-03-22 21:27:09+00:00,2026-03-28 08:07:53.079000+00:00
+121303252,Scottcjn,User,False,AutoJanitor,Elyan Labs LLC,https://bottube.ai,"Louisiana, US",True,Founder @ Elyan Labs | RustChain blockchain | BoTTube AI video | POWER8 inference | OpenSSL contributor | CVPR 2026 | https://rustchain.org,2022-12-23 14:51:25+00:00,2026-03-26 04:21:31+00:00,2026-03-28 08:08:11.017000+00:00
+62731404,SouthWest7,User,False,Xinan Miao,,,,,,2020-03-27 01:47:42+00:00,2026-03-12 13:17:10+00:00,2026-03-28 08:07:56.275000+00:00
+7993836,Gnoale,User,False,Guillaume Noale,Scaleway,,Paris,,,2014-06-26 08:01:45+00:00,2026-03-05 13:04:07+00:00,2026-03-28 08:08:03.434000+00:00
+3634405,sungsooha,User,False,sungsoo ha,NVIDIA,,Redmond,,"Software Engineer
+",2013-02-19 07:43:02+00:00,2026-02-13 23:15:07+00:00,2026-03-28 08:07:49.264000+00:00
+25892000,kibitzing,User,False,Jingu Kang,NAVER Cloud,,Korea,,"LLM (HyperCLOVA X) Post training at NAVER Cloud
+
+(https://clova-x.naver.com)",2017-02-20 04:02:32+00:00,2026-03-19 08:28:28+00:00,2026-03-28 08:07:55.709000+00:00
+118778470,vedantjh2,User,False,Vedant V Jhaveri,,,,,"USC, UIUC ",2022-11-21 23:02:55+00:00,2026-02-16 00:37:15+00:00,2026-03-28 08:08:00.457000+00:00
+193573554,Dingjifeng,User,False,JIFENG DING,,,Shanghai,,,2025-01-03 06:52:11+00:00,2026-03-26 19:09:26+00:00,2026-03-28 08:07:57.581000+00:00
+16586896,amasolov,User,False,Alexey Masolov,Red Hat,http://www.redhat.com,"Sydney, Australia",,Senior Technical Account Manager @RedHatOfficial ,2016-01-07 04:05:00+00:00,2026-02-27 04:06:52+00:00,2026-03-28 08:07:39.788000+00:00
+13285808,lgeiger,User,False,Lukas Geiger,@plumerai @larq ,www.linkedin.com/in/lgeiger,London,True,deep learning scientist | astroparticle physicist | software engineer,2015-07-11 07:54:07+00:00,2026-02-26 23:38:51+00:00,2026-03-28 08:08:01.978000+00:00
+209313916,scos-lab,User,False,,,https://stl-lang.org/,,,,2025-04-27 04:17:27+00:00,2026-03-28 03:59:46+00:00,2026-03-28 08:07:31.294000+00:00
+56020245,Teeeto,User,False,,,,,,,2019-10-01 08:16:44+00:00,2026-03-26 08:13:06+00:00,2026-03-28 08:07:36.624000+00:00
+5625518,collinmccarthy,User,False,Collin McCarthy,@nvidia,,"Truckee, CA",,"Research Scientist, NVIDIA",2013-10-07 01:59:00+00:00,2026-03-19 17:54:16+00:00,2026-03-28 08:07:51.839000+00:00
+250204754,khairulkabir1661,User,False,Khairul Kabir,,,,,,2025-12-17 18:34:37+00:00,2026-01-08 16:44:37+00:00,2026-03-28 08:07:46.658000+00:00
+32590313,tianrengao,User,False,Terry Gao,Meta,,Menlo Park,True,,2017-10-07 08:14:09+00:00,2026-03-24 23:48:16+00:00,2026-03-28 08:07:32.911000+00:00
+43847754,izhuhaoran,User,False,zhrrr,@alibaba,,,,Tongyi Lab of Alibaba Group,2018-10-04 10:41:13+00:00,2026-02-13 13:08:52+00:00,2026-03-28 08:07:49.856000+00:00
+26850796,roikoren755,User,False,,,,,,,2017-04-02 09:26:12+00:00,2026-03-24 11:55:23+00:00,2026-03-28 08:07:40.051000+00:00
+258847353,goingforstudying-ctrl,User,False,,,,,,,2026-02-02 14:30:22+00:00,2026-03-11 23:02:01+00:00,2026-03-28 08:07:53.874000+00:00
+3337719,varun-sundar-rabindranath,User,False,Varun Sundar Rabindranath,Red Hat,,"Boston, MA",,"Software Engineer interested in the research areas Machine Learning, Natural Language Processing, Information Retrieval, Program Synthesis and Computer Vision",2013-01-22 10:08:14+00:00,2026-02-06 14:48:42+00:00,2026-03-28 08:08:07.081000+00:00
+15009201,lengrongfu,User,False,rongfu.leng,@DaoCloud ,https://lengrongfu.github.io/,Chengdu Sichuan China,,,2015-10-07 05:38:12+00:00,2026-03-19 01:41:33+00:00,2026-03-28 08:07:58.602000+00:00
+206519888,nguyennhuanhle,User,False,,,,,,,2025-04-07 08:03:06+00:00,2026-03-18 16:21:51+00:00,2026-03-28 08:07:33.035000+00:00
+71343812,dharun4772,User,False,Dharun Suryaa Nagarajan,Clade,,New York,True,"AI Engineer
+",2020-09-15 17:23:19+00:00,2026-03-21 21:22:20+00:00,2026-03-28 08:07:41.082000+00:00
+62061672,wxsIcey,User,False,Xiaoshuang Wang,,,,,,2020-03-11 12:35:36+00:00,2026-03-05 06:12:40+00:00,2026-03-28 08:08:09.004000+00:00
+1090152,bratao,User,False,Bruno Cabral,Escavador,,,,"A practitioner focusing on Infrastructure, Natural Language Processing and Open Information Extraction. 
+PhD student at @ufba. 
+Proud employee of @Escavador",2011-09-29 15:05:39+00:00,2026-02-09 23:17:17+00:00,2026-03-28 08:07:40.306000+00:00
+62244933,maralbahari,User,False,Maral,,,Paris,,,2020-03-16 12:00:31+00:00,2026-03-25 09:26:38+00:00,2026-03-28 14:07:53.421000+00:00
+5318912,bangshengtang,User,False,Bangsheng Tang,,,,,,2013-08-27 07:31:28+00:00,2026-01-25 19:36:55+00:00,2026-03-28 14:07:40.576000+00:00
+1997638,dotmobo,User,False,.mobo,Unistra,https://linktr.ee/dotmobo,France,,developer,2012-07-18 10:18:43+00:00,2026-03-23 11:28:35+00:00,2026-03-28 14:07:41.386000+00:00
+4735579,heungwing,User,False,,,,,,,2013-06-19 06:24:00+00:00,2026-03-27 14:53:02+00:00,2026-03-28 14:07:13.458000+00:00
+199298453,vllm-bot,User,False,vLLM Bot,,,,,,2025-02-14 20:44:23+00:00,2025-04-18 20:52:23+00:00,2026-03-28 14:07:21.504000+00:00
+119339226,chenshui223,User,False,LYU Yichen,,,,,"student of @CUHK & Individual Developer
+",2022-11-28 15:29:44+00:00,2026-03-23 14:57:52+00:00,2026-03-28 14:07:49.429000+00:00
+23176869,BoyuanFeng,User,False,Boyuan Feng,,https://boyuanfeng.github.io/,,,CS Ph.D. @ UC Santa Barbara; SWE@PyTorch,2016-10-31 20:01:05+00:00,2025-09-29 15:53:20+00:00,2026-03-28 14:07:49.291000+00:00
+38633841,ziywang50,User,False,,,,,,,2018-04-22 19:33:29+00:00,2026-03-12 02:32:43+00:00,2026-03-28 14:07:39.469000+00:00
+10534475,liuzijing2014,User,False,Zijing Liu,,,,,,2015-01-14 17:02:10+00:00,2026-03-27 02:24:08+00:00,2026-03-28 14:07:32.128000+00:00
+111321569,JMonde,User,False,Joaquín Mondéjar,,,,,,2022-08-15 22:58:58+00:00,2026-03-25 12:37:58+00:00,2026-03-28 14:07:39.722000+00:00
+39548240,HAIAI,User,False,,,,,,,2018-05-23 06:29:32+00:00,2026-03-06 06:22:37+00:00,2026-03-28 14:07:35.060000+00:00
+11457008,Meenapintu,User,False,Pintu Lal Meena,@YehiGo,http://me.yehigo.com,India,True,"An enthusiastic team player, creative and programmer.
+A logical and imaginative problem solver with self starter attitude.",2015-03-13 09:37:27+00:00,2026-02-16 08:21:27+00:00,2026-03-28 14:07:41.663000+00:00
+33718736,Cursx,User,False,,,,,,,2017-11-16 10:29:13+00:00,2026-03-28 05:42:51+00:00,2026-03-28 14:07:50.135000+00:00
+86769888,DongZhaoXiong,User,False,Kraft,,https://kraft.org.cn,Beijing,,,2021-07-01 07:57:27+00:00,2026-03-24 07:49:15+00:00,2026-03-28 14:07:49.859000+00:00
+9081673,Pinockel,User,False,,,,,,,2014-10-08 13:29:57+00:00,2026-02-08 07:42:05+00:00,2026-03-28 14:07:49.131000+00:00

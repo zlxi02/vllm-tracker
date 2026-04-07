@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vLLM Issue Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f8f9fa;
+  --surface: #ffffff;
+  --border: #dee2e6;
+  --text: #212529;
+  --text-secondary: #6c757d;
+  --primary: #0d6efd;
+  --primary-light: #e7f1ff;
+  --green: #198754;
+  --red: #dc3545;
+  --orange: #fd7e14;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+  display: flex; min-height: 100vh;
+}
+
+/* Sidebar nav */
+.sidebar {
+  width: 180px; min-width: 180px; background: var(--bg);
+  display: flex; flex-direction: column; padding: 16px 0;
+  border-right: 1px solid var(--border); transition: width 0.2s, min-width 0.2s, padding 0.2s;
+  overflow: hidden; position: fixed; top: 0; left: 0; height: 100vh; z-index: 10;
+}
+.main-content { margin-left: 180px; transition: margin-left 0.2s; }
+.sidebar.collapsed + .main-content { margin-left: 0; }
+.sidebar.collapsed { width: 0; min-width: 0; padding: 0; border-right: none; }
+.sidebar.collapsed .sidebar-brand,
+.sidebar.collapsed .sidebar-nav { opacity: 0; pointer-events: none; }
+.sidebar-toggle {
+  position: fixed; top: 12px; left: 148px; z-index: 20;
+  width: 30px; height: 30px; border-radius: 6px; border: none;
+  background: transparent; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; color: var(--text-secondary);
+  transition: left 0.2s; padding: 0;
+}
+.sidebar-toggle svg { width: 16px; height: 16px; }
+.sidebar-toggle:hover { color: var(--text); background: rgba(0,0,0,0.06); }
+.sidebar-toggle:active { background: rgba(0,0,0,0.12); }
+.sidebar.collapsed ~ .main-content .sidebar-toggle { left: 12px; }
+.sidebar.collapsed ~ .main-content .tab-panel { padding-top: 44px; }
+.sidebar .sidebar-brand {
+  font-size: 17px; font-weight: 700; padding: 0 16px 16px; border-bottom: 1px solid var(--border);
+  margin-bottom: 8px; color: var(--text); white-space: nowrap; transition: opacity 0.15s;
+}
+.sidebar .sidebar-brand span { color: var(--primary); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; transition: opacity 0.15s; }
+.sidebar-nav button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px;
+  border: none; border-radius: 6px; background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; transition: all 0.15s;
+  white-space: nowrap;
+}
+.sidebar-nav button:hover { background: var(--surface); color: var(--text); }
+.sidebar-nav button.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.sidebar-nav button .nav-icon { font-size: 15px; width: 20px; text-align: center; }
+
+.main-content { flex: 1; overflow-x: hidden; overflow-y: auto; position: relative; }
+.container { padding: 16px 20px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Newsfeed */
+.newsfeed-topbar {
+  display: flex; gap: 16px; margin: 16px 0; align-items: center;
+}
+.nf-topbar-nav {
+  display: flex; align-items: center; gap: 8px;
+}
+.nf-arrow {
+  background: none; border: none; border-radius: var(--radius);
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-secondary); font-size: 14px; transition: all 0.15s; padding: 0;
+}
+.nf-arrow:hover { color: var(--text); text-shadow: 0 0 8px rgba(0,0,0,0.2); }
+.nf-arrow:disabled { display: none; }
+.nf-topbar-title { font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.nf-topbar-stats {
+  display: flex; gap: 12px; margin-left: auto;
+}
+.nf-topbar-stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+}
+.nf-topbar-stat .nf-stat-num { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1; }
+.nf-topbar-stat .nf-stat-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.newsfeed-layout {
+  display: flex; gap: 20px;
+}
+.newsfeed-sidebar {
+  width: 200px; min-width: 200px; display: flex; flex-direction: column; gap: 4px;
+  transition: width 0.2s, min-width 0.2s, opacity 0.2s; overflow: hidden;
+}
+.newsfeed-sidebar.collapsed { width: 0; min-width: 0; opacity: 0; pointer-events: none; }
+.nf-sidebar-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px;
+}
+.nf-sidebar-header .nf-sidebar-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600;
+}
+.nf-sidebar-toggle {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 14px;
+  padding: 2px 4px; border-radius: 3px; transition: all 0.15s;
+}
+.nf-sidebar-toggle:hover { color: var(--text); background: rgba(0,0,0,0.06); }
+.nf-date-btn {
+  display: block; width: 100%; padding: 8px 12px; border: 1px solid transparent; border-radius: var(--radius);
+  background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer;
+  text-align: left; transition: all 0.15s; font-weight: 500; white-space: nowrap;
+}
+.nf-date-btn:hover { background: var(--surface); color: var(--text); }
+.nf-date-btn.active { background: var(--primary-light); color: var(--primary); font-weight: 600; border-color: rgba(13,110,253,0.2); }
+.nf-date-count { float: right; font-size: 11px; opacity: 0.7; font-weight: 400; }
+.nf-expand-btn {
+  display: none; position: fixed; top: 50%; left: 188px; transform: translateY(-50%);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  width: 24px; height: 48px; cursor: pointer; color: var(--text-secondary); font-size: 12px;
+  align-items: center; justify-content: center; z-index: 5; transition: left 0.2s;
+}
+.newsfeed-sidebar.collapsed ~ .newsfeed-main .nf-expand-btn { display: flex; left: 188px; }
+.newsfeed-main { flex: 1; min-width: 0; position: relative; }
+.nf-day-panel { display: none; }
+.nf-day-panel.active { display: block; }
+.nf-section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 24px; margin-bottom: 16px;
+}
+.nf-section h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.nf-section h3 { font-size: 14px; font-weight: 600; margin: 16px 0 8px; color: var(--text); }
+.nf-lead { font-size: 15px; line-height: 1.7; color: var(--text); margin-bottom: 16px; }
+.nf-item {
+  padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start;
+}
+.nf-item:last-child { border-bottom: none; }
+.nf-emoji { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+.nf-item-body { flex: 1; }
+.nf-item-title { font-weight: 600; font-size: 13px; color: var(--text); }
+.nf-item-title a { color: var(--primary); text-decoration: none; }
+.nf-item-title a:hover { text-decoration: underline; }
+.nf-item-desc { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+.nf-tag {
+  display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px;
+  border-radius: 3px; margin-right: 4px; margin-top: 4px;
+}
+.nf-tag-red { background: #fde8e8; color: #b91c1c; }
+.nf-tag-orange { background: #fff3e0; color: #c2410c; }
+.nf-tag-blue { background: var(--primary-light); color: var(--primary); }
+.nf-tag-green { background: #e8f5e9; color: #166534; }
+.nf-tag-purple { background: #f3e8ff; color: #7c3aed; }
+.nf-callout {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius);
+  padding: 14px 18px; margin: 16px 0; font-size: 13px; line-height: 1.6;
+}
+.nf-callout strong { color: var(--text); }
+.nf-summary-list {
+  list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px;
+}
+.nf-summary-list li {
+  font-size: 14px; line-height: 1.6; padding-left: 24px; position: relative;
+}
+.nf-summary-list li::before { content: attr(data-icon); position: absolute; left: 0; }
+.nf-detail-list {
+  list-style: disc; padding-left: 20px; margin: 6px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+  display: flex; flex-direction: column; gap: 3px;
+}
+
+/* Roadmap iframe */
+.roadmap-frame { width: 100%; height: calc(100vh - 60px); border: none; }
+
+
+/* Header */
+header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+header h1 { font-size: 22px; font-weight: 700; }
+header h1 span { color: var(--primary); }
+#stats { font-size: 13px; color: var(--text-secondary); }
+
+/* Search */
+.search-bar { margin-bottom: 16px; }
+.search-bar input {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 14px; background: var(--surface);
+  outline: none; transition: border-color 0.15s;
+}
+.search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(13,110,253,0.15); }
+
+/* Active filters bar */
+.active-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; min-height: 0; }
+.active-filters:empty { display: none; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border-radius: 12px; font-size: 12px; font-weight: 500;
+  background: var(--primary-light); color: var(--primary); cursor: default;
+}
+.filter-chip .chip-label { font-weight: 600; text-transform: uppercase; font-size: 10px; opacity: 0.7; }
+.filter-chip .chip-remove { cursor: pointer; font-size: 14px; line-height: 1; opacity: 0.6; margin-left: 2px; }
+.filter-chip .chip-remove:hover { opacity: 1; }
+.clear-all-chip {
+  background: none; border: 1px dashed var(--border); color: var(--text-secondary);
+  cursor: pointer; padding: 3px 10px; border-radius: 12px; font-size: 12px;
+}
+.clear-all-chip:hover { background: var(--bg); }
+
+/* Sort modes */
+.sort-modes { display: flex; gap: 4px; margin-bottom: 16px; }
+.sort-modes button {
+  padding: 7px 16px; border: 1px solid var(--border); border-radius: 20px;
+  background: var(--surface); font-size: 13px; font-weight: 500;
+  cursor: pointer; color: var(--text-secondary); transition: all 0.15s;
+}
+.sort-modes button:hover { background: var(--bg); color: var(--text); }
+.sort-modes button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.sort-modes button .sort-desc { font-size: 11px; opacity: 0.7; margin-left: 4px; }
+.sort-modes { position: relative; }
+.sort-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%; font-size: 9px; font-weight: 700;
+  font-style: italic; margin-left: 4px; opacity: 0.5; cursor: help;
+  border: 1px solid currentColor; position: relative; vertical-align: middle;
+  font-family: Georgia, serif; line-height: 1;
+}
+.sort-info::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%); background: var(--text); color: #fff; font-size: 11px;
+  font-style: normal; font-weight: 500; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 6px 10px; border-radius: 4px; white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity 0.15s; z-index: 200; line-height: 1.4;
+}
+.sort-info:hover::after { opacity: 1; }
+.top-caret { font-size: 10px; margin-left: 3px; opacity: 0.7; }
+.top-period-menu {
+  display: none; position: absolute; top: 100%; left: auto; z-index: 50;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 110px; padding: 4px 0; margin-top: 4px;
+}
+.top-period-menu.open { display: block; }
+.tp-option {
+  padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text);
+}
+.tp-option:hover { background: var(--bg); }
+.tp-option.active { color: var(--primary); font-weight: 600; }
+.date-range-menu {
+  display: none; position: absolute; top: 100%; left: 0; z-index: 50;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 12px; margin-top: 4px; min-width: 220px;
+}
+.date-range-menu.open { display: block; }
+.dr-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dr-row label { font-size: 12px; font-weight: 600; min-width: 36px; color: var(--text-secondary); }
+.dr-row input[type="date"] { flex: 1; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
+.dr-actions { display: flex; gap: 8px; margin-top: 4px; }
+.dr-actions button { flex: 1; padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; cursor: pointer; background: var(--surface); }
+.dr-apply-btn { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
+.dr-actions button:hover { opacity: 0.85; }
+#date-range-btn.has-dates { background: #e7f1ff; border-color: var(--primary); color: var(--primary); }
+
+/* Search tabs */
+.search-tabs { display: flex; gap: 0; margin-bottom: -1px; position: relative; z-index: 2; overflow-x: auto; padding-bottom: 1px; }
+.search-tab {
+  display: flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0; background: var(--bg);
+  font-size: 13px; cursor: pointer; color: var(--text-secondary);
+  white-space: nowrap; max-width: 250px; margin-right: -1px;
+}
+.search-tab:hover { background: #eef1f4; }
+.search-tab.active { background: var(--surface); border-bottom-color: var(--surface); color: var(--text); font-weight: 600; }
+.search-tab .tab-close { font-size: 14px; line-height: 1; opacity: 0.4; cursor: pointer; padding: 0 2px; }
+.search-tab .tab-close:hover { opacity: 1; }
+.search-tab .tab-count { font-size: 11px; background: var(--primary-light); color: var(--primary); padding: 0 6px; border-radius: 8px; font-weight: 600; }
+.tab-new {
+  padding: 8px 12px; border: 1px dashed var(--border); border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0; background: transparent;
+  font-size: 16px; cursor: pointer; color: var(--text-secondary); line-height: 1;
+}
+.tab-new:hover { background: var(--bg); }
+
+/* Table */
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  overflow-x: auto; box-shadow: var(--shadow);
+}
+table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+thead th {
+  position: sticky; top: 0; background: var(--surface);
+  border-bottom: 2px solid var(--border); padding: 6px 8px;
+  text-align: left; font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  color: var(--text-secondary); white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+thead th:hover { color: var(--text); }
+thead th .th-inner { display: flex; align-items: center; gap: 3px; }
+thead th .filter-icon { font-size: 9px; opacity: 0.4; }
+thead th.has-filter .filter-icon { opacity: 1; color: var(--primary); }
+thead th.sorted-asc .sort-arrow::after { content: " ▲"; font-size: 9px; }
+thead th.sorted-desc .sort-arrow::after { content: " ▼"; font-size: 9px; }
+tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.1s; }
+tbody tr:hover { background: #f8f9ff; }
+tbody tr.issue-row { cursor: pointer; }
+td { padding: 5px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+td.num { text-align: right; white-space: nowrap; }
+td.title-cell a { color: var(--primary); text-decoration: none; font-weight: 500; font-size: 12px; }
+td.title-cell a:hover { text-decoration: underline; }
+td.title-cell .body-preview {
+  font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.3;
+}
+/* Column widths (total ~100%) */
+th.col-ca { width: 90px; } /* Created */
+th.col-n  { width: 70px; } /* PR # */
+th.col-t  { width: auto; } /* Title - gets remaining space */
+th.col-s  { width: 58px; } /* State */
+th.col-ty { width: 72px; } /* Type */
+th.col-hw { width: 65px; } /* Hardware */
+th.col-mo { width: 65px; } /* Model */
+th.col-sig { width: 100px; } /* SIG Group */
+th.col-lo { width: 82px; } /* Age */
+th.col-nc { width: 55px; } /* Comments */
+th.col-cr { width: 80px; } /* Author */
+
+/* Expanded source row */
+tr.issue-row.expanded {
+  background: var(--primary-light); border-left: 3px solid var(--primary);
+  border-bottom: none;
+}
+tr.issue-row.expanded td:first-child { padding-left: 5px; }
+tr.issue-row.expanded + tr.expanded-row { border-bottom: none; }
+
+/* Expanded row */
+tr.expanded-row { background: #f8f9ff; }
+tr.expanded-row td { padding: 0; }
+.expanded-card {
+  border-left: 3px solid var(--primary);
+  background: #fbfcfd;
+}
+.expanded-card .exp-layout {
+  display: flex; min-height: 100px; max-height: 85vh;
+  overflow: hidden;
+}
+.exp-resize-handle {
+  height: 8px; cursor: ns-resize; background: #eef1f5;
+  border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s; user-select: none;
+}
+.exp-resize-handle:hover, .exp-resize-handle.dragging { background: var(--primary-light); }
+.exp-resize-handle::after {
+  content: ""; display: block; width: 32px; height: 3px;
+  border-radius: 2px; background: #c0c8d4;
+}
+.exp-resize-handle:hover::after, .exp-resize-handle.dragging::after { background: var(--primary); }
+/* Sidebar */
+.exp-sidebar {
+  width: 220px; min-width: 220px; border-right: 1px solid var(--border);
+  padding: 14px 16px; font-size: 12px; overflow-y: auto; background: #f5f7fa;
+}
+.exp-sidebar .meta-group { margin-bottom: 12px; }
+.exp-sidebar .meta-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-secondary); font-weight: 700; margin-bottom: 4px;
+}
+.exp-sidebar .meta-value { font-size: 13px; color: var(--text); margin-bottom: 2px; }
+.exp-sidebar .meta-value.state-open { color: var(--green); font-weight: 600; }
+.exp-sidebar .meta-value.state-closed { color: var(--red); font-weight: 600; }
+.exp-sidebar .gh-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.exp-sidebar .gh-label {
+  display: inline-block; padding: 2px 8px; border-radius: 12px;
+  font-size: 11px; font-weight: 500; line-height: 1.4;
+}
+.exp-sidebar .assignee-list { display: flex; flex-direction: column; gap: 2px; }
+.exp-sidebar .assignee {
+  font-size: 12px; color: var(--primary); font-weight: 500;
+}
+/* Body */
+.exp-body {
+  flex: 1; padding: 16px 20px; overflow-y: auto; font-size: 13px; line-height: 1.65;
+}
+.exp-body h1, .exp-body h2, .exp-body h3, .exp-body h4 {
+  margin: 16px 0 8px; font-weight: 600; color: var(--text);
+}
+.exp-body h1 { font-size: 18px; } .exp-body h2 { font-size: 16px; }
+.exp-body h3 { font-size: 14px; } .exp-body h4 { font-size: 13px; }
+.exp-body p { margin: 6px 0; }
+.exp-body ul, .exp-body ol { margin: 6px 0 6px 20px; }
+.exp-body li { margin-bottom: 3px; }
+.exp-body code {
+  background: #eef1f6; padding: 1px 5px; border-radius: 3px;
+  font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 12px;
+}
+.exp-body pre {
+  background: #1e1e2e; color: #cdd6f4; padding: 12px 16px;
+  border-radius: 6px; overflow-x: auto; margin: 10px 0;
+  font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 12px;
+  line-height: 1.5;
+}
+.exp-body pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.exp-body a { color: var(--primary); }
+.exp-body blockquote {
+  border-left: 3px solid var(--border); padding: 4px 12px;
+  margin: 8px 0; color: var(--text-secondary); background: #f8f9fa;
+}
+.exp-body .view-full {
+  display: inline-block; margin-top: 12px; padding: 6px 14px;
+  background: var(--primary); color: #fff; border-radius: 4px;
+  text-decoration: none; font-size: 12px; font-weight: 500;
+}
+.exp-body .view-full:hover { opacity: 0.9; }
+.exp-body img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
+.exp-body del { text-decoration: line-through; color: var(--text-secondary); }
+.exp-body ol { margin: 6px 0 6px 20px; list-style: decimal; }
+.exp-body table.md-table {
+  border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px;
+}
+.exp-body table.md-table th, .exp-body table.md-table td {
+  border: 1px solid var(--border); padding: 6px 10px;
+}
+.exp-body table.md-table th {
+  background: #f5f7fa; font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.exp-body table.md-table tr:nth-child(even) { background: #f8f9fa; }
+
+/* Tags */
+.tag {
+  display: inline-block; padding: 1px 5px; border-radius: 8px;
+  font-size: 10px; font-weight: 500; margin: 1px 1px; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.tag-state-open { background: #d1f5d3; color: #0a5c1e; }
+.tag-state-closed { background: #f0d0d0; color: #7a1a1a; }
+.tag-type { background: #e7f1ff; color: #084298; }
+.tag-hw { background: #fff3cd; color: #664d03; }
+.tag-model { background: #e2d9f3; color: #432874; }
+.tag-sig { background: #d4edda; color: #155724; }
+.tag-lo-New { background: #d1ecf1; color: #0c5460; }
+.tag-lo-Long-running { background: #f8d7da; color: #721c24; }
+.tag-lo-Stale { background: #e2e3e5; color: #383d41; }
+
+/* Column filter dropdown */
+.col-filter-popup {
+  position: fixed; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 220px; max-height: 350px; display: flex; flex-direction: column;
+  font-size: 13px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text);
+}
+.col-filter-popup .cf-search { padding: 8px; border-bottom: 1px solid var(--border); }
+.col-filter-popup .cf-search input {
+  width: 100%; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 4px; font-size: 13px; outline: none;
+}
+.col-filter-popup .cf-search input:focus { border-color: var(--primary); }
+.col-filter-popup .cf-options { overflow-y: auto; max-height: 240px; padding: 4px 0; }
+.col-filter-popup .cf-option { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.col-filter-popup .cf-option:hover { background: var(--bg); }
+.col-filter-popup .cf-option input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; flex-shrink: 0; }
+.col-filter-popup .cf-option .cf-count { margin-left: auto; font-size: 11px; color: var(--text-secondary); }
+.col-filter-popup .cf-actions { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--border); }
+.col-filter-popup .cf-actions button { flex: 1; padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; cursor: pointer; background: var(--surface); }
+.col-filter-popup .cf-actions button.cf-apply { background: var(--primary); color: #fff; border-color: var(--primary); }
+.col-filter-popup .cf-actions button:hover { opacity: 0.85; }
+
+/* Pagination */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; font-size: 13px; }
+.pagination button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; font-size: 13px; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination button:not(:disabled):hover { background: var(--primary-light); }
+.pagination .page-info { color: var(--text-secondary); }
+
+/* Loading / Empty */
+#loading { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 16px; }
+.empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand"><span>vLLM</span> Tracker</div>
+  <div class="sidebar-nav">
+    <button class="active" data-tab="dashboard"><span class="nav-icon">&#9632;</span> Dashboard</button>
+    <button data-tab="newsfeed"><span class="nav-icon"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><line x1="8" y1="2.5" x2="8" y2="13.5"/></svg></span> Newsfeed</button>
+    <button data-tab="roadmap"><span class="nav-icon">&#9776;</span> Roadmap</button>
+    <button data-tab="resources"><span class="nav-icon">&#128279;</span> Resources</button>
+  </div>
+</nav>
+<div class="main-content">
+<button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
+    <line x1="7.5" y1="2.5" x2="7.5" y2="13.5"/>
+  </svg>
+</button>
+
+<div id="panel-dashboard" class="tab-panel active">
+<div class="container">
+  <header>
+    <h1><span>vLLM</span> Issue Dashboard</h1>
+    <div id="stats">Loading...</div>
+  </header>
+
+  <div class="search-bar">
+    <input type="text" id="search" placeholder="Search by PR #, keyword, title, or body..." autocomplete="off">
+  </div>
+
+  <div id="active-filters" class="active-filters"></div>
+
+  <div class="sort-modes" id="sort-modes">
+    <button class="active" data-mode="new">New<span class="sort-desc">Latest first</span></button>
+    <button data-mode="hot">Hot<span class="sort-desc">Trending now</span></button>
+    <button data-mode="top" id="top-btn">Top<span class="sort-desc" id="top-period-label">All Time</span><span class="top-caret">&#9662;</span></button>
+    <div class="top-period-menu" id="top-period-menu">
+      <div class="tp-option" data-period="day">Day</div>
+      <div class="tp-option" data-period="week">Week</div>
+      <div class="tp-option" data-period="month">Month</div>
+      <div class="tp-option" data-period="year">Year</div>
+      <div class="tp-option active" data-period="all">All Time</div>
+    </div>
+    <span style="position:relative;display:inline-block;">
+      <button type="button" id="date-range-btn">From<span class="sort-desc" id="date-range-label">Any date</span><span class="top-caret">&#9662;</span></button>
+      <div class="date-range-menu" id="date-range-menu">
+        <div class="dr-row"><label>From</label><input type="date" id="dr-from"></div>
+        <div class="dr-row"><label>To</label><input type="date" id="dr-to"></div>
+        <div class="dr-actions">
+          <button id="dr-clear">Clear</button>
+          <button id="dr-apply" class="dr-apply-btn">Apply</button>
+        </div>
+      </div>
+    </span>
+  </div>
+
+  <div id="loading">Loading issue data...</div>
+
+  <div id="results" style="display:none;">
+    <div class="search-tabs" id="search-tabs"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-ca" data-sort="ca" data-col="ca"><span class="th-inner">Created <span class="sort-arrow"></span></span></th>
+            <th class="col-n" data-sort="n" data-col="n"><span class="th-inner">PR # <span class="sort-arrow"></span></span></th>
+            <th class="col-t" data-sort="t" data-col="t"><span class="th-inner">Title <span class="sort-arrow"></span></span></th>
+            <th class="col-s" data-col="s" data-filter="s"><span class="th-inner">State <span class="filter-icon">▼</span></span></th>
+            <th class="col-ty" data-col="ty" data-filter="ty"><span class="th-inner">Type <span class="filter-icon">▼</span></span></th>
+            <th class="col-hw" data-col="hw" data-filter="hw"><span class="th-inner">HW <span class="filter-icon">▼</span></span></th>
+            <th class="col-mo" data-col="mo" data-filter="mo"><span class="th-inner">Model <span class="filter-icon">▼</span></span></th>
+            <th class="col-sig" data-col="sig" data-filter="sig"><span class="th-inner">SIG <span class="filter-icon">▼</span></span></th>
+            <th class="col-lo" data-col="lo" data-filter="lo"><span class="th-inner">Age <span class="filter-icon">▼</span></span></th>
+            <th class="col-nc" data-sort="nc" data-col="nc"><span class="th-inner">Cmt # <span class="sort-arrow"></span></span></th>
+            <th class="col-cr" data-col="cr" data-filter="cr"><span class="th-inner">Author <span class="filter-icon">▼</span></span></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <button id="prev-page">&larr; Previous</button>
+      <span class="page-info" id="page-info"></span>
+      <button id="next-page">Next &rarr;</button>
+    </div>
+  </div>
+</div>
+</div><!-- /panel-dashboard -->
+
+<div id="panel-newsfeed" class="tab-panel">
+  <div class="container">
+    <header><h1><span>vLLM</span> Newsfeed</h1></header>
+
+    <!-- Top bar: arrows + date + stats -->
+    <div class="newsfeed-topbar" id="nf-topbar">
+      <div class="nf-topbar-nav">
+        <button class="nf-arrow" id="nf-prev" title="Previous day">&#9664;</button>
+        <span class="nf-topbar-title" id="nf-topbar-title">Today, Saturday April 5</span>
+        <button class="nf-arrow" id="nf-next" title="Next day" disabled>&#9654;</button>
+      </div>
+      <div class="nf-topbar-stats">
+        <div class="nf-topbar-stat"><div class="nf-stat-num" id="nf-stat-issues">11</div><div class="nf-stat-label">Issues</div></div>
+        <div class="nf-topbar-stat"><div class="nf-stat-num" id="nf-stat-comments">16</div><div class="nf-stat-label">Comments</div></div>
+        <div class="nf-topbar-stat"><div class="nf-stat-num" id="nf-stat-closed">1</div><div class="nf-stat-label">Closed</div></div>
+      </div>
+    </div>
+
+    <div class="newsfeed-layout">
+      <!-- Collapsible sidebar: day selector -->
+      <div class="newsfeed-sidebar collapsed" id="nf-sidebar">
+        <div class="nf-sidebar-header">
+          <span class="nf-sidebar-label">Daily Newsletters</span>
+          <button class="nf-sidebar-toggle" id="nf-sidebar-collapse" title="Collapse sidebar"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="12" y1="4" x2="4" y2="4"/><line x1="12" y1="8" x2="4" y2="8"/><line x1="12" y1="12" x2="4" y2="12"/></svg></button>
+        </div>
+        <button class="nf-date-btn active" data-nf="apr5" data-title="Today, Saturday April 5" data-issues="11" data-comments="16" data-closed="1"><span style="color:var(--primary);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Today</span><br>Sat, April 5 <span class="nf-date-count">11 issues</span></button>
+        <button class="nf-date-btn" data-nf="apr4" data-title="Friday, April 4" data-issues="16" data-comments="15" data-closed="3">Fri, April 4 <span class="nf-date-count">16 issues</span></button>
+        <button class="nf-date-btn" data-nf="apr3" data-title="Thursday, April 3" data-issues="31" data-comments="55" data-closed="4">Thu, April 3 <span class="nf-date-count">31 issues</span></button>
+        <button class="nf-date-btn" data-nf="apr2" data-title="Wednesday, April 2" data-issues="21" data-comments="26" data-closed="3">Wed, April 2 <span class="nf-date-count">21 issues</span></button>
+      </div>
+
+      <!-- Main content -->
+      <div class="newsfeed-main">
+        <div id="nf-sidebar-expand" title="Show sidebar" style="margin-bottom:12px;font-size:12px;padding:6px 10px;border-radius:var(--radius);background:transparent;cursor:pointer;color:var(--text-secondary);transition:box-shadow 0.15s;display:inline-block;" onmouseenter="this.style.boxShadow='0 1px 4px rgba(0,0,0,0.12)'" onmouseleave="this.style.boxShadow='none'"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><line x1="8" y1="2.5" x2="8" y2="13.5"/></svg>Previous newsletters</div>
+
+<!-- ===== APRIL 5 ===== -->
+<div class="nf-day-panel active" id="nf-apr5">
+  <div class="nf-section">
+    <h2>Gemma 4 Dropped 3 Days Ago. The Bugs Are Pouring In.</h2>
+    <p class="nf-lead">vLLM v0.19.0 shipped on April 1 with Gemma 4 support as the flagship feature. Three days later, Gemma 4 is the single biggest source of new issues. FP8 quantization produces gibberish, AWQ models hang with zero requests running, MoE variants crash on data parallelism, and tool calling is broken. If you're trying to serve Gemma 4 in production right now &mdash; you probably can't.</p>
+    <div class="nf-callout"><strong>Why this matters:</strong> Gemma 4 was the headline feature of v0.19.0 and vLLM shipped a Docker image specifically for it (<code>vllm/vllm-openai:gemma4</code>). High-profile launch + broken day-3 experience = the kind of thing that erodes trust.</div>
+    <div class="nf-item"><span class="nf-emoji">&#128165;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 FP8 dynamic quantization = gibberish output (<a href="https://github.com/vllm-project/vllm/issues/39049" target="_blank">#39049</a>)</div><div class="nf-item-desc">FP8 quantization on Gemma 4 produces nonsensical output. Users expecting to run quantized Gemma 4 for cost savings are dead in the water.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128683;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 31B-AWQ: 0 running, 4 waiting &mdash; requests just hang (<a href="https://github.com/vllm-project/vllm/issues/39037" target="_blank">#39037</a>)</div><div class="nf-item-desc">AWQ-quantized Gemma 4 accepts requests but never processes them. 3 comments and counting.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128295;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 + tool calling is broken (<a href="https://github.com/vllm-project/vllm/issues/39043" target="_blank">#39043</a>)</div><div class="nf-item-desc">Tool/function calling doesn't work with Gemma 4. Given that tool use was a headline Gemma 4 feature, this is a big gap.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>Other Issues Worth Watching</h2>
+    <h3>&#128293; ROCm 0.19 Is Broken</h3>
+    <div class="nf-item"><span class="nf-emoji">&#9888;&#65039;</span><div class="nf-item-body"><div class="nf-item-title">Hang during CUDA graph capture on ROCm in v0.19 (<a href="https://github.com/vllm-project/vllm/issues/39010" target="_blank">#39010</a>)</div><div class="nf-item-desc">6 comments &mdash; the hottest non-Gemma issue today. CUDA graph capture hangs on AMD GPUs. AMD users are stuck on v0.18.</div></div></div>
+    <h3>&#9889; Stability</h3>
+    <div class="nf-item"><span class="nf-emoji">&#128165;</span><div class="nf-item-body"><div class="nf-item-title">CUDA illegal memory access under high concurrency (Qwen3.5) (<a href="https://github.com/vllm-project/vllm/issues/39025" target="_blank">#39025</a>)</div><div class="nf-item-desc">CUDA graphs + high request volume = crash. The kind of thing that breaks prod on a Friday night.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128268;</span><div class="nf-item-body"><div class="nf-item-title">DeepEP hardcodes quant param, causing MoE crash/accuracy loss (<a href="https://github.com/vllm-project/vllm/issues/39022" target="_blank">#39022</a>)</div><div class="nf-item-desc">DeepEP's all-to-all path forces per_act_token_quant=False. Models that need it on will crash or silently lose accuracy.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>The Bottom Line</h2>
+    <p class="nf-lead" style="margin-bottom:0;"><strong>v0.19.0 is a rough release.</strong> The flagship feature (Gemma 4) has multiple blocking bugs across quantization, tool calling, and MoE. ROCm support regressed. Teams running production workloads should stay on v0.18.1 until the dust settles.</p>
+  </div>
+  <div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:12px;">Generated from vLLM GitHub issues &middot; April 5, 2026</div>
+</div>
+
+<!-- ===== APRIL 4 ===== -->
+<div class="nf-day-panel" id="nf-apr4">
+  <div class="nf-section">
+    <h2>Qwen3.5 Is Having a Bad Week on New Hardware</h2>
+    <p class="nf-lead">The most popular MoE model is hitting problems on the newest chips. A 23% throughput regression on B200, garbled output on Intel XPU, and prefix caching issues. Meanwhile, Gemma 4 MoE can't even start with data parallelism, and the new expert load balancing infrastructure is deadlocking on Blackwell.</p>
+    <div class="nf-item"><span class="nf-emoji">&#128200;</span><div class="nf-item-body"><div class="nf-item-title">23% throughput regression on Qwen3.5-397B NVFP4 decode (8xB200) (<a href="https://github.com/vllm-project/vllm/issues/39004" target="_blank">#39004</a>)</div><div class="nf-item-desc">5 comments. Flagship model on flagship hardware is 23% slower than last release. Likely a kernel config regression between v0.18 and v0.19.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128196;</span><div class="nf-item-body"><div class="nf-item-title">Qwen3.5 9B producing garbled output on Intel XPU (<a href="https://github.com/vllm-project/vllm/issues/38994" target="_blank">#38994</a>)</div><div class="nf-item-desc">Repetitive/garbled text on Intel backend. Correctness issues on non-NVIDIA platforms keep stacking up.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128269;</span><div class="nf-item-body"><div class="nf-item-title">Qwen3.5 27B prefix caching issues (<a href="https://github.com/vllm-project/vllm/issues/38988" target="_blank">#38988</a>)</div><div class="nf-item-desc">3 comments. Prefix caching behavior is off for Qwen3.5 &mdash; a feature that matters for production latency.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>MoE Infrastructure Growing Pains</h2>
+    <div class="nf-item"><span class="nf-emoji">&#128163;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 MoE crashes with data parallelism &gt; 1 (<a href="https://github.com/vllm-project/vllm/issues/38999" target="_blank">#38999</a>)</div><div class="nf-item-desc">The MoE variant (26B-A4B) can't do multi-GPU data parallel at all. AssertionError in the cache engine.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128230;</span><div class="nf-item-body"><div class="nf-item-title">EPLB rearrangement hangs with DP8 + EP on B200 (<a href="https://github.com/vllm-project/vllm/issues/38986" target="_blank">#38986</a>)</div><div class="nf-item-desc">Expert load balancing deadlocks on Blackwell. The new scaling infrastructure isn't ready for multi-GPU MoE yet.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128165;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 MoE runtime MXFP4 quantization crashes during weight loading (<a href="https://github.com/vllm-project/vllm/issues/39000" target="_blank">#39000</a>)</div><div class="nf-item-desc">Online quantization + Gemma 4 MoE = crash during weight loading. Can't even get to inference.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>Also Noted</h2>
+    <div class="nf-item"><span class="nf-emoji">&#128268;</span><div class="nf-item-body"><div class="nf-item-title">Mistral Small 4 (119B MoE) fails to start on ROCm MI325X (<a href="https://github.com/vllm-project/vllm/issues/38972" target="_blank">#38972</a>)</div><div class="nf-item-desc">Two blocking issues preventing Mistral's big MoE from running on AMD's latest datacenter GPU. ROCm + MoE remains fragile.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128736;</span><div class="nf-item-body"><div class="nf-item-title">v0.19.0 regression: page size not divisible by max page size (<a href="https://github.com/vllm-project/vllm/issues/38979" target="_blank">#38979</a>)</div><div class="nf-item-desc">Something broke between releases in the memory manager. A regression that didn't exist in v0.18.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>The Bottom Line</h2>
+    <p class="nf-lead" style="margin-bottom:0;"><strong>New hardware + new models = pain.</strong> Qwen3.5 on B200 has a serious throughput regression. Gemma 4 MoE can't run multi-GPU. EPLB deadlocks on Blackwell. The pattern: vLLM's newest features (MoE infra, online quantization, Blackwell support) are hitting real-world edge cases that weren't caught before release.</p>
+  </div>
+  <div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:12px;">Generated from vLLM GitHub issues &middot; April 4, 2026</div>
+</div>
+
+<!-- ===== APRIL 3 ===== -->
+<div class="nf-day-panel" id="nf-apr3">
+  <div class="nf-section">
+    <h2>v0.19.0 Day Two: 31 Issues. The Floodgates Are Open.</h2>
+    <p class="nf-lead">The busiest day of the week for vLLM issues. v0.19.0 dropped two days ago and users are hitting it hard. Qwen3.5 thinking mode is broken (14 comments &mdash; the hottest issue of the week), Gemma 4 tool parsing is mangling HTML, and Gemma 4 is painfully slow on older GPUs. Oh, and DeepSeek R1 output is wrong.</p>
+    <div class="nf-item"><span class="nf-emoji">&#128293;</span><div class="nf-item-body"><div class="nf-item-title">Qwen3.5 thinking mode: content goes to reasoning field, actual content = None (<a href="https://github.com/vllm-project/vllm/issues/38894" target="_blank">#38894</a>)</div><div class="nf-item-desc">14 comments. The hottest issue this week. When thinking is enabled, the model's response ends up in the wrong field and content returns empty. Completely broken for chain-of-thought.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128165;</span><div class="nf-item-body"><div class="nf-item-title">DeepSeek R1 produces incorrect output (<a href="https://github.com/vllm-project/vllm/issues/38931" target="_blank">#38931</a>)</div><div class="nf-item-desc">4 comments. Output correctness issue on one of the most popular models. Not gibberish &mdash; just wrong answers. Hard to debug, easy to miss.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>Gemma 4: Day Two Issues</h2>
+    <div class="nf-item"><span class="nf-emoji">&#128295;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 tool parser duplicates HTML tag prefixes in streamed arguments (<a href="https://github.com/vllm-project/vllm/issues/38910" target="_blank">#38910</a>)</div><div class="nf-item-desc">4 comments. Streaming tool calls get corrupted HTML. Tool use + streaming is broken together &mdash; a common production pattern.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128034;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 extremely slow: ~9 tok/s on RTX 6000 with TRITON_ATTN fallback (<a href="https://github.com/vllm-project/vllm/issues/38887" target="_blank">#38887</a>)</div><div class="nf-item-desc">4 comments. On older/workstation GPUs, Gemma 4 falls back to Triton attention and crawls. 9 tokens/sec is unusable.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128683;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 31B freezes during loading on multiple RTX 6000 PRO (<a href="https://github.com/vllm-project/vllm/issues/38926" target="_blank">#38926</a>)</div><div class="nf-item-desc">3 comments. Can't even get to inference &mdash; hangs during weight loading on multi-GPU workstation setups.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128268;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 on Turing GPUs (SM 7.5): all attention backends hit shared memory limits (<a href="https://github.com/vllm-project/vllm/issues/38918" target="_blank">#38918</a>)</div><div class="nf-item-desc">3 comments. Gemma 4 can't run on Turing-generation GPUs at all. Shared memory requirements exceed what the hardware provides.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128736;</span><div class="nf-item-body"><div class="nf-item-title"><a href="https://github.com/vllm-project/vllm/issues/38946" target="_blank">#38946</a> Gemma 4 tool usage produces invalid JSON in streaming <span style="color:var(--green);font-size:11px;">CLOSED</span></div><div class="nf-item-desc">Fixed quickly &mdash; streaming tool calls produced malformed JSON. One of the few Gemma 4 bugs with fast turnaround.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>Also Noted</h2>
+    <div class="nf-item"><span class="nf-emoji">&#128187;</span><div class="nf-item-body"><div class="nf-item-title">H100 CUDA 13.0 nightly wheels require glibc 2.35, failing on 2.34 (<a href="https://github.com/vllm-project/vllm/issues/38908" target="_blank">#38908</a>)</div><div class="nf-item-desc">3 comments. Docker images built against a newer glibc than many production hosts run. Blocks upgrades.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128337;</span><div class="nf-item-body"><div class="nf-item-title">Qwen3.5 inference TimeoutError with FlashInfer GDN backend (<a href="https://github.com/vllm-project/vllm/issues/38916" target="_blank">#38916</a>)</div><div class="nf-item-desc">Qwen3.5 times out on the FlashInfer backend. Another backend-specific failure for the most popular MoE model.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>The Bottom Line</h2>
+    <p class="nf-lead" style="margin-bottom:0;"><strong>Post-release flood day.</strong> 31 issues &mdash; nearly 3x the daily average. The Qwen3.5 thinking bug (14 comments) is the week's hottest issue. Gemma 4 problems are spreading beyond quantization into tool parsing, performance on non-datacenter GPUs, and basic model loading. The pattern: v0.19.0 shipped ambitious features but QA didn't cover the combinatorial matrix of models x hardware x features.</p>
+  </div>
+  <div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:12px;">Generated from vLLM GitHub issues &middot; April 3, 2026</div>
+</div>
+
+<!-- ===== APRIL 2 ===== -->
+<div class="nf-day-panel" id="nf-apr2">
+  <div class="nf-section">
+    <h2>v0.19.0 Day One: The Early Reports Are In</h2>
+    <p class="nf-lead">First full day after the v0.19.0 release. 21 issues filed &mdash; above average but not yet a flood. The first Gemma 4 reasoning parser bug surfaces, some vLLM IR infrastructure work lands, and users are kicking the tires on new features like ASR models and PDL support.</p>
+    <div class="nf-item"><span class="nf-emoji">&#128172;</span><div class="nf-item-body"><div class="nf-item-title">Gemma 4 reasoning parser fails &mdash; channel tokens stripped incorrectly (<a href="https://github.com/vllm-project/vllm/issues/38855" target="_blank">#38855</a>)</div><div class="nf-item-desc">5 comments. The first Gemma 4 bug to surface post-release. Reasoning parser can't separate thinking content from response content. Early signal of what becomes a theme this week.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128269;</span><div class="nf-item-body"><div class="nf-item-title">Port configuration question (<a href="https://github.com/vllm-project/vllm/issues/38820" target="_blank">#38820</a>)</div><div class="nf-item-desc">6 comments. A usage question that got a lot of engagement &mdash; people are actively trying to deploy v0.19.0 and hitting basic setup friction.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128249;</span><div class="nf-item-body"><div class="nf-item-title">Qwen3-VL video inference: metadata errors (<a href="https://github.com/vllm-project/vllm/issues/38811" target="_blank">#38811</a>)</div><div class="nf-item-desc">3 comments. Video inference on Qwen3-VL is broken due to missing metadata handling. Multimodal edge cases continue to bite.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>Feature Requests &amp; Infrastructure</h2>
+    <div class="nf-item"><span class="nf-emoji">&#128640;</span><div class="nf-item-body"><div class="nf-item-title">Feature: General LL GEMMs with PDL support (<a href="https://github.com/vllm-project/vllm/issues/38772" target="_blank">#38772</a>)</div><div class="nf-item-desc">3 comments. Request for Programmatic Dependent Launch support in low-latency GEMMs. Forward-looking GPU kernel work.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128268;</span><div class="nf-item-body"><div class="nf-item-title">Feature: ROCm support for Kimi K2.5 EAGLE3 MTP heads (<a href="https://github.com/vllm-project/vllm/issues/38851" target="_blank">#38851</a>)</div><div class="nf-item-desc">Request to bring speculative decoding (Eagle3) for Kimi K2.5 to AMD GPUs. Shows growing AMD user demand for advanced features.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128736;</span><div class="nf-item-body"><div class="nf-item-title">vLLM IR: Op test &amp; benchmark infra (<a href="https://github.com/vllm-project/vllm/issues/38782" target="_blank">#38782</a>)</div><div class="nf-item-desc">vLLM IR (intermediate representation) is a new compiler infrastructure project. Early-stage but potentially big &mdash; could change how vLLM optimizes model execution.</div></div></div>
+    <div class="nf-item"><span class="nf-emoji">&#128268;</span><div class="nf-item-body"><div class="nf-item-title">Does vLLM support online inference for Qwen3 ASR forced aligner? (<a href="https://github.com/vllm-project/vllm/issues/38805" target="_blank">#38805</a>)</div><div class="nf-item-desc">Users already trying the new audio model support. Online inference for ASR models apparently not yet wired up.</div></div></div>
+  </div>
+  <div class="nf-section">
+    <h2>The Bottom Line</h2>
+    <p class="nf-lead" style="margin-bottom:0;"><strong>Day one after release &mdash; early adopters are exploring.</strong> Issue volume is elevated but not alarming yet. The Gemma 4 reasoning parser bug is the first canary. Feature requests for ROCm spec decode and vLLM IR infrastructure show the community is engaged and forward-looking. The real flood comes tomorrow.</p>
+  </div>
+  <div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:12px;">Generated from vLLM GitHub issues &middot; April 2, 2026</div>
+</div>
+
+      </div><!-- /newsfeed-main -->
+    </div><!-- /newsfeed-layout -->
+  </div>
+</div>
+
+<div id="panel-roadmap" class="tab-panel">
+<div class="container">
+  <header>
+    <h1><span>v0.20.0</span> Release Roadmap &mdash; April 15</h1>
+    <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-secondary);">
+      <span id="roadmap-meta"></span>
+      <span>Prev: <a href="https://github.com/vllm-project/vllm/releases/tag/v0.19.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.19.0</a></span>
+    </div>
+  </header>
+</div>
+  <iframe class="roadmap-frame" src="report.html"></iframe>
+</div>
+
+<div id="panel-resources" class="tab-panel">
+  <div class="container">
+    <header><h1><span>vLLM</span> Resources</h1></header>
+
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:24px;max-width:900px;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+        <h3 style="margin-bottom:12px;font-size:15px;font-weight:700;">Past Releases</h3>
+        <table style="font-size:13px;border-collapse:collapse;width:100%;">
+          <thead><tr style="border-bottom:2px solid var(--border);color:var(--text-secondary);">
+            <th style="text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;width:70px;">Version</th>
+            <th style="text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;width:65px;">Date</th>
+            <th style="text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;">Highlights</th>
+          </tr></thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 8px;font-weight:500;white-space:nowrap;"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.19.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.19.0</a></td>
+              <td style="padding:8px 8px;white-space:nowrap;">Apr 1</td>
+              <td style="padding:8px 8px;color:var(--text-secondary);font-size:12px;">Gemma 4, zero-bubble async scheduling, MRV2, ViT CUDA graphs, CPU KV offloading</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 8px;font-weight:500;white-space:nowrap;"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.18.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.18.0</a></td>
+              <td style="padding:8px 8px;white-space:nowrap;">Mar 18</td>
+              <td style="padding:8px 8px;color:var(--text-secondary);font-size:12px;">DeepSeek V3.2 / R2, Qwen3.5, Blackwell FP4, elastic EP</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 8px;font-weight:500;white-space:nowrap;"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.17.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.17.0</a></td>
+              <td style="padding:8px 8px;white-space:nowrap;">Mar 4</td>
+              <td style="padding:8px 8px;color:var(--text-secondary);font-size:12px;">OpenAI Responses API, V1 as default, MLA optimization</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 8px;font-weight:500;white-space:nowrap;"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.16.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.16.0</a></td>
+              <td style="padding:8px 8px;white-space:nowrap;">Feb 18</td>
+              <td style="padding:8px 8px;color:var(--text-secondary);font-size:12px;">DeepSeek R1 day-one, structured output v2, PP for MoE</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 8px;font-weight:500;white-space:nowrap;"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.15.0" target="_blank" style="color:var(--primary);text-decoration:none;">v0.15.0</a></td>
+              <td style="padding:8px 8px;white-space:nowrap;">Feb 4</td>
+              <td style="padding:8px 8px;color:var(--text-secondary);font-size:12px;">FlashMLA, torch.compile for DeepSeek, async scheduling</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="text-align:center;margin-top:12px;"><a href="https://github.com/vllm-project/vllm/releases" target="_blank" style="color:var(--text-secondary);text-decoration:none;font-size:12px;">View all releases &rarr;</a></div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+        <h3 style="margin-bottom:12px;font-size:15px;font-weight:700;">Quarterly Roadmaps</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;" id="rm-list">
+          <li><a href="https://github.com/vllm-project/vllm/issues/32455" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q1 2026</a> <span style="color:var(--text-secondary);font-size:12px;">— SIG restructure, model runner V2, GB200/GB300, Responses API</span></li>
+          <li><a href="https://github.com/vllm-project/vllm/issues/26376" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q4 2025</a> <span style="color:var(--text-secondary);font-size:12px;">— post-V0 removal, async scheduling, Elastic Experts, RL determinism</span></li>
+          <li><a href="https://github.com/vllm-project/vllm/issues/20336" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q3 2025</a> <span style="color:var(--text-secondary);font-size:12px;">— path to vLLM 1.0, disaggregated serving, Blackwell/MI350X</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/15735" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q2 2025</a> <span style="color:var(--text-secondary);font-size:12px;">— V0 removal, v1.0.0 target, DeepEP, NIXL disaggregation</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/11862" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q1 2025</a> <span style="color:var(--text-secondary);font-size:12px;">— ship V1 architecture, expert parallelism, Blackwell support</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/9006" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q4 2024</a> <span style="color:var(--text-secondary);font-size:12px;">— V2 engine, multimodality, torch.compile, KV cache offload</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/5805" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q3 2024</a> <span style="color:var(--text-secondary);font-size:12px;">— pipeline parallelism, FP8, encoder-decoder, chunked prefill</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/3861" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q2 2024</a> <span style="color:var(--text-secondary);font-size:12px;">— six themes formalized, FlashInfer, spec decode framework</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/2681" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Q1 2024</a> <span style="color:var(--text-secondary);font-size:12px;">— first quarterly roadmap, prefix caching, FP8, multi-hardware</span></li>
+          <li class="rm-extra" style="display:none;"><a href="https://github.com/vllm-project/vllm/issues/244" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">H2 2023</a> <span style="color:var(--text-secondary);font-size:12px;">— original roadmap, PagedAttention, OpenAI API, Flash Attention V2</span></li>
+        </ul>
+        <div style="text-align:center;margin-top:10px;" id="rm-show-more-wrap"><a href="#" style="color:var(--text-secondary);text-decoration:none;font-size:12px;" onclick="event.preventDefault();document.querySelectorAll('.rm-extra').forEach(el=>el.style.display='');this.parentElement.style.display='none';">Show 7 more &darr;</a></div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+        <h3 style="margin-bottom:12px;font-size:15px;font-weight:700;">Documentation &amp; Resources</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+          <li><a href="https://docs.vllm.ai/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">docs.vllm.ai</a> <span style="color:var(--text-secondary);font-size:12px;">— official documentation and API reference</span></li>
+          <li><a href="https://blog.vllm.ai/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">blog.vllm.ai</a> <span style="color:var(--text-secondary);font-size:12px;">— engineering blog and release announcements</span></li>
+          <li><a href="https://github.com/vllm-project/vllm" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">vllm-project/vllm</a> <span style="color:var(--text-secondary);font-size:12px;">— main repository, issues, and PRs</span></li>
+          <li><a href="https://pypi.org/project/vllm/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">PyPI &mdash; vllm</a> <span style="color:var(--text-secondary);font-size:12px;">— Python package for pip installs</span></li>
+          <li><a href="https://github.com/vllm-project/vllm-gaudi" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">vllm-project/vllm-gaudi</a> <span style="color:var(--text-secondary);font-size:12px;">— Intel Gaudi accelerator plugin</span></li>
+        </ul>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+        <h3 style="margin-bottom:12px;font-size:15px;font-weight:700;">Community</h3>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+          <li><a href="https://slack.vllm.ai/" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Slack</a> <span style="color:var(--text-secondary);font-size:12px;">— primary communication channel, SIG discussions, release announcements</span></li>
+          <li><a href="https://discord.gg/vllm" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:500;">Discord</a> <span style="color:var(--text-secondary);font-size:12px;">— community support and general discussion</span></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+const PAGE_SIZE = 50;
+const NUM_COLS = 11;
+let allIssues = [];
+let filterOptions = {};
+let nowDate = "";
+let expandedIssueNum = null; // track which issue row is expanded
+const bodyCache = {}; // chunk_id -> {issue_num: body_text}
+
+async function loadBody(iss) {
+  const chunkId = iss.bc;
+  if (!bodyCache[chunkId]) {
+    const resp = await fetch(`data/bodies/${chunkId}.json`);
+    bodyCache[chunkId] = await resp.json();
+  }
+  return bodyCache[chunkId][String(iss.n)] || iss.bp;
+}
+
+// --- Tab state ---
+let tabs = [];
+let activeTabId = null;
+let tabIdCounter = 0;
+
+function newTabState(label) {
+  return {
+    id: ++tabIdCounter, label: label || "All Issues",
+    filters: { s:[], ty:[], hw:[], mo:[], sig:[], lo:[], cr:[] },
+    query: "", sortMode: "new", sortField: "ca", sortDir: -1, page: 1, topPeriod: "all", dateFrom: "", dateTo: ""
+  };
+}
+function getTab() { return tabs.find(t => t.id === activeTabId); }
+
+// --- Init ---
+async function init() {
+  try {
+    const resp = await fetch("data/dashboard_data.json");
+    const data = await resp.json();
+    allIssues = data.issues;
+    filterOptions = data.filters;
+    nowDate = new Date().toISOString().slice(0, 10);
+    const tab = newTabState("All Issues");
+    tabs.push(tab);
+    activeTabId = tab.id;
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("results").style.display = "block";
+    renderTabs();
+    applyFilters();
+  } catch (e) {
+    document.getElementById("loading").textContent = "Error loading data: " + e.message;
+  }
+}
+
+// --- Filtering ---
+function getFilteredIssues(tab) {
+  const q = tab.query.toLowerCase().trim();
+  const f = tab.filters;
+  return allIssues.filter(iss => {
+    if (q && !((iss.t + " " + iss.bp).toLowerCase().includes(q) || String(iss.n).includes(q.replace(/^#/, '')))) return false;
+    if (f.s.length && !f.s.includes(iss.s)) return false;
+    if (f.ty.length && !f.ty.includes(iss.ty)) return false;
+    if (f.hw.length && !f.hw.some(h => iss.hw.includes(h))) return false;
+    if (f.mo.length && !f.mo.some(m => iss.mo.includes(m))) return false;
+    if (f.sig.length && !f.sig.includes(iss.sig || "")) return false;
+    if (f.lo.length && !f.lo.includes(iss.lo || "")) return false;
+    if (f.cr.length && !f.cr.includes(iss.cr)) return false;
+    if (tab.dateFrom && iss.ca < tab.dateFrom) return false;
+    if (tab.dateTo && iss.ca > tab.dateTo) return false;
+    return true;
+  });
+}
+
+function applyFilters() {
+  const tab = getTab();
+  if (!tab) return;
+  tab.query = document.getElementById("search").value;
+  tab.label = buildTabLabel(tab);
+  let filtered = getFilteredIssues(tab);
+  sortList(filtered, tab);
+  tab.page = Math.min(tab.page, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
+  renderActiveFilters(tab);
+  renderTable(filtered, tab);
+  renderTabs();
+  updateSortModeButtons(tab);
+  updateColumnFilterIndicators(tab);
+}
+
+// --- Sorting ---
+function daysSince(dateStr) {
+  if (!dateStr) return 9999;
+  return Math.max(0, (new Date(nowDate) - new Date(dateStr)) / 86400000);
+}
+function hotScore(iss) { return (iss.nc + 1) / Math.pow(daysSince(iss.ca) + 2, 1.5); }
+function staleScore(iss) { return iss.s !== "open" ? -1 : daysSince(iss.ca) / (iss.nc + 1); }
+function sortList(list, tab) {
+  if (tab.sortMode === "new") {
+    list.sort((a, b) => {
+      let va = a[tab.sortField], vb = b[tab.sortField];
+      if (typeof va === "string") return va.localeCompare(vb) * tab.sortDir;
+      return ((va || 0) - (vb || 0)) * tab.sortDir;
+    });
+  } else if (tab.sortMode === "hot") { list.sort((a, b) => hotScore(b) - hotScore(a));
+  } else if (tab.sortMode === "top") {
+    const maxDays = {day:1, week:7, month:30, year:365, all:Infinity}[tab.topPeriod] || Infinity;
+    if (maxDays !== Infinity) {
+      for (let i = list.length - 1; i >= 0; i--) { if (daysSince(list[i].ca) > maxDays) list.splice(i, 1); }
+    }
+    list.sort((a, b) => (b.nc || 0) - (a.nc || 0));
+  } else if (tab.sortMode === "stale") { list.sort((a, b) => staleScore(b) - staleScore(a)); }
+}
+
+// --- Lightweight Markdown renderer ---
+function renderMarkdown(raw) {
+  if (!raw) return "";
+
+  // Step 1: Extract code blocks from raw text BEFORE escaping.
+  // This ensures code content is never processed for markdown or HTML restoration.
+  // Handles variable-length fences (```, ````, etc.) per GFM spec.
+  const codeBlocks = [];
+  const lines = raw.split('\n');
+  let result = [];
+  let inFence = false;
+  let fenceLen = 0;
+  let fenceContent = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const fenceMatch = lines[i].match(/^(`{3,})(\w*)\s*$/);
+    if (fenceMatch) {
+      if (!inFence) {
+        inFence = true;
+        fenceLen = fenceMatch[1].length;
+        fenceContent = [];
+      } else if (fenceMatch[1].length >= fenceLen && !fenceMatch[2]) {
+        // Closing fence: must be >= opening length and no info string
+        codeBlocks.push('<pre><code>' + esc(fenceContent.join('\n')).trimEnd() + '</code></pre>');
+        result.push('\x00CB' + (codeBlocks.length - 1) + '\x00');
+        inFence = false;
+      } else {
+        fenceContent.push(lines[i]);
+      }
+    } else if (inFence) {
+      fenceContent.push(lines[i]);
+    } else {
+      result.push(lines[i]);
+    }
+  }
+  // Unclosed fence: render as code block anyway
+  if (inFence) {
+    codeBlocks.push('<pre><code>' + esc(fenceContent.join('\n')).trimEnd() + '</code></pre>');
+    result.push('\x00CB' + (codeBlocks.length - 1) + '\x00');
+  }
+
+  let text = esc(result.join('\n'));
+
+  // Restore safe HTML tags that GitHub issues commonly use
+  text = text.replace(/&lt;(\/?)(details|summary|br|hr|sub|sup|dd|dl|dt|kbd|var|abbr)(\s*\/?)&gt;/gi, '<$1$2$3>');
+
+  // Restore <img> tags with attributes (very common in GitHub issues)
+  text = text.replace(/&lt;img\s+([\s\S]*?)\/?\s*&gt;/gi, (_, attrs) => {
+    const parsed = {};
+    const attrRe = /(src|alt|width|height|style|title)\s*=\s*&quot;([^&]*(?:&amp;[^&]*)*)&quot;/gi;
+    let m;
+    while ((m = attrRe.exec(attrs)) !== null) {
+      parsed[m[1].toLowerCase()] = m[2].replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    }
+    if (!parsed.src) return ''; // No src = skip
+    // Build responsive style — drop raw width/height attrs to avoid distortion
+    const safe = ['src="' + parsed.src + '"'];
+    if (parsed.alt) safe.push('alt="' + parsed.alt + '"');
+    if (parsed.title) safe.push('title="' + parsed.title + '"');
+    safe.push('style="max-width:100%;height:auto;border-radius:4px;margin:8px 0"');
+    return '<img ' + safe.join(' ') + '>';
+  });
+
+  // Inline code: `...` (preserve placeholders inside)
+  text = text.replace(/`([^`\x00]+)`/g, '<code>$1</code>');
+
+  // Horizontal rules
+  text = text.replace(/^(-{3,}|\*{3,}|_{3,})$/gm, '<hr>');
+
+  // Headings: ### ...
+  text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Strikethrough: ~~...~~
+  text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+  // Bold: **...**
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic: *...*
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Checkboxes
+  text = text.replace(/^\[x\]/gim, '&#9745;');
+  text = text.replace(/^\[ \]/gm, '&#9744;');
+  text = text.replace(/^- &#97(44|45);/gm, '<li style="list-style:none;margin-left:-20px">&#97$1;');
+
+  // Blockquotes: > ...
+  text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Merge adjacent blockquotes
+  text = text.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+
+  // Tables: detect header | separator | rows pattern
+  text = text.replace(/(^\|.+\n)(^\|[\s:|-]+\|\s*\n)((?:^\|.+\n?)+)/gm, (match, headerLine, sep, bodyLines) => {
+    const hCells = headerLine.trim().split('|').slice(1, -1).map(c => c.trim());
+    const alignCells = sep.trim().split('|').slice(1, -1).map(c => {
+      c = c.trim();
+      if (c.startsWith(':') && c.endsWith(':')) return 'center';
+      if (c.endsWith(':')) return 'right';
+      return 'left';
+    });
+    let html = '<table class="md-table"><thead><tr>';
+    hCells.forEach((c, i) => {
+      const align = alignCells[i] || 'left';
+      html += '<th style="text-align:' + align + '">' + c + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    bodyLines.trim().split('\n').forEach(row => {
+      const cells = row.split('|').slice(1, -1).map(c => c.trim());
+      html += '<tr>';
+      cells.forEach((c, i) => {
+        const align = alignCells[i] || 'left';
+        html += '<td style="text-align:' + align + '">' + c + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+  });
+
+  // Ordered list items: 1. ... — use \x00OL marker to distinguish from unordered
+  text = text.replace(/^(\d+)\. (.+)$/gm, '\x00OL<li>$2</li>');
+
+  // Unordered list items: - ... or * ...
+  text = text.replace(/^[-*] (.+)$/gm, '\x00UL<li>$1</li>');
+
+  // Wrap consecutive ordered items in <ol>
+  text = text.replace(/(\x00OL<li>.*<\/li>\n?)+/g, (m) => '<ol>' + m.replace(/\x00OL/g, '') + '</ol>');
+
+  // Wrap consecutive unordered items in <ul>
+  text = text.replace(/(\x00UL<li>.*<\/li>\n?)+/g, (m) => '<ul>' + m.replace(/\x00UL/g, '') + '</ul>');
+
+  // Images: ![alt](url)
+  text = text.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s\)]+(?:\([^\)]*\))*[^\s\)]*)\)/g, '<img src="$2" alt="$1" style="max-width:100%;height:auto;border-radius:4px;margin:8px 0">');
+
+  // URLs
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+(?:\([^\)]*\))*[^\s\)]*)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  text = text.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+
+  // Paragraphs: double newlines
+  text = text.replace(/\n{2,}/g, '</p><p>');
+
+  // GFM: single newlines become <br> (within paragraphs, not after block elements)
+  text = text.replace(/(?<!\>)\n(?!\<)/g, '<br>\n');
+
+  text = '<p>' + text + '</p>';
+
+  // Restore code blocks before cleanup so <pre> tags are visible to paragraph cleanup
+  text = text.replace(/\x00CB(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i)]);
+
+  // Clean up empty paragraphs around block elements
+  text = text.replace(/<p>\s*<(h[1-4]|pre|ul|ol|blockquote|hr|details|table)/g, '<$1');
+  text = text.replace(/<\/(h[1-4]|pre|ul|ol|blockquote|details|table)>\s*<\/p>/g, '</$1>');
+  text = text.replace(/<hr>\s*<\/p>/g, '<hr>');
+  text = text.replace(/<p>\s*<\/p>/g, '');
+  text = text.replace(/<p><br>/g, '<p>');
+
+  return text;
+}
+
+// --- Label color helpers ---
+function contrastColor(hex) {
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 140 ? '#24292e' : '#ffffff';
+}
+
+function renderExpandedCard(iss, bodyText) {
+  const labels = (iss.lb || []).map(l =>
+    `<span class="gh-label" style="background:${esc(l.c)};color:${contrastColor(l.c)}">${esc(l.n)}</span>`
+  ).join("") || '<span style="color:var(--text-secondary)">None</span>';
+
+  const assignees = (iss.as || "").split(",").filter(Boolean).map(a =>
+    `<span class="assignee">@${esc(a.trim())}</span>`
+  ).join("") || '<span style="color:var(--text-secondary)">Unassigned</span>';
+
+  const bodyHtml = bodyText ? renderMarkdown(bodyText) : '<div style="color:var(--text-secondary);padding:20px;text-align:center">Loading...</div>';
+  const isTruncated = (bodyText || iss.bp || "").endsWith("...");
+
+  return `
+    <div class="expanded-card">
+      <div class="exp-layout">
+        <div class="exp-sidebar">
+          <div class="meta-group">
+            <div class="meta-label">Created</div>
+            <div class="meta-value">${iss.ca}</div>
+          </div>
+          <div class="meta-group">
+            <div class="meta-label">State</div>
+            <div class="meta-value"><span class="tag tag-state-${iss.s}">${iss.s}</span></div>
+          </div>
+          <div class="meta-group">
+            <div class="meta-label">Type</div>
+            <div class="meta-value"><span class="tag tag-type">${esc(iss.ty)}</span></div>
+          </div>
+          ${iss.hw.length ? `<div class="meta-group"><div class="meta-label">Hardware</div><div class="meta-value">${iss.hw.map(h=>`<span class="tag tag-hw">${esc(h)}</span>`).join(" ")}</div></div>` : ""}
+          ${iss.mo.length ? `<div class="meta-group"><div class="meta-label">Model</div><div class="meta-value">${iss.mo.map(m=>`<span class="tag tag-model">${esc(m)}</span>`).join(" ")}</div></div>` : ""}
+          ${iss.sig ? `<div class="meta-group"><div class="meta-label">SIG Group</div><div class="meta-value"><span class="tag tag-sig">${esc(iss.sig)}</span></div></div>` : ""}
+          ${iss.lo ? `<div class="meta-group"><div class="meta-label">Age</div><div class="meta-value"><span class="tag tag-lo-${iss.lo}">${esc(iss.lo)}</span></div></div>` : ""}
+          <div class="meta-group">
+            <div class="meta-label">Comments</div>
+            <div class="meta-value">${iss.nc}</div>
+          </div>
+          <div class="meta-group">
+            <div class="meta-label">Author</div>
+            <div class="meta-value"><span class="assignee">@${esc(iss.cr)}</span></div>
+            ${iss.co ? `<div style="font-size:11px;color:var(--text-secondary)">${esc(iss.co)}</div>` : ""}
+          </div>
+          ${iss.cla ? `<div class="meta-group"><div class="meta-label">Closed</div><div class="meta-value">${iss.cla}</div></div>` : ""}
+          <div class="meta-group">
+            <div class="meta-label">Days Open</div>
+            <div class="meta-value">${Math.round(iss.do)}</div>
+          </div>
+          ${iss.ro ? `<div class="meta-group"><div class="meta-label">Reopened</div><div class="meta-value">${iss.ro}x</div></div>` : ""}
+          <div class="meta-group" style="margin-top:auto;padding-top:12px"><a href="${esc(iss.url)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--primary);text-decoration:none;font-weight:500">View on GitHub &rarr;</a></div>
+        </div>
+        <div class="exp-body">
+          <h2 style="margin-top:0"><a href="${esc(iss.url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">#${iss.n}: ${esc(iss.t)}</a></h2>
+          ${bodyHtml}
+          ${isTruncated ? `<a class="view-full" href="${esc(iss.url)}" target="_blank" rel="noopener">View full issue on GitHub &rarr;</a>` : ""}
+        </div>
+      </div>
+      <div class="exp-resize-handle" data-resize="${iss.n}"></div>
+    </div>`;
+}
+
+// --- Render table ---
+function attachResizeHandlers(container) {
+  container.querySelectorAll(".exp-resize-handle").forEach(handle => {
+    handle.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const layout = handle.previousElementSibling;
+      const startY = e.clientY;
+      const startH = layout.offsetHeight;
+      handle.classList.add("dragging");
+      function onMove(ev) {
+        const newH = Math.max(150, Math.min(window.innerHeight * 0.85, startH + ev.clientY - startY));
+        layout.style.height = newH + "px";
+      }
+      function onUp() {
+        handle.classList.remove("dragging");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
+}
+
+function renderTable(filtered, tab) {
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = (tab.page - 1) * PAGE_SIZE;
+  const page = filtered.slice(start, start + PAGE_SIZE);
+
+  document.getElementById("stats").textContent =
+    `Showing ${total ? start + 1 : 0}–${Math.min(start + PAGE_SIZE, total)} of ${total.toLocaleString()} issues (${allIssues.length.toLocaleString()} total)`;
+
+  const tbody = document.getElementById("table-body");
+  if (page.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${NUM_COLS}" class="empty-state">No issues match your filters.</td></tr>`;
+  } else {
+    let html = "";
+    for (const iss of page) {
+      const isExpanded = expandedIssueNum === iss.n;
+      html += `
+      <tr class="issue-row${isExpanded ? " expanded" : ""}" data-issue-num="${iss.n}">
+        <td class="num" style="font-size:11px">${iss.ca}</td>
+        <td class="num">${iss.n}</td>
+        <td class="title-cell">
+          <a href="${esc(iss.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(iss.t)}</a>
+          <div class="body-preview">${esc(iss.bp)}</div>
+        </td>
+        <td><span class="tag tag-state-${iss.s}">${iss.s}</span></td>
+        <td><span class="tag tag-type">${esc(iss.ty)}</span></td>
+        <td>${iss.hw.length ? iss.hw.map(h => `<span class="tag tag-hw">${esc(h)}</span>`).join("") : '<span style="color:#ccc">—</span>'}</td>
+        <td>${iss.mo.length ? iss.mo.map(m => `<span class="tag tag-model">${esc(m)}</span>`).join("") : '<span style="color:#ccc">—</span>'}</td>
+        <td>${iss.sig ? `<span class="tag tag-sig">${esc(iss.sig)}</span>` : '<span style="color:#ccc">—</span>'}</td>
+        <td>${iss.lo ? `<span class="tag tag-lo-${iss.lo}">${esc(iss.lo)}</span>` : '<span style="color:#ccc">—</span>'}</td>
+        <td class="num">${iss.nc}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${esc(iss.cr)}</td>
+      </tr>`;
+      if (isExpanded) {
+        // Show with loading state initially; body loaded async
+        const cachedBody = bodyCache[iss.bc] && bodyCache[iss.bc][String(iss.n)];
+        html += `<tr class="expanded-row" data-issue-num="${iss.n}"><td colspan="${NUM_COLS}">${renderExpandedCard(iss, cachedBody)}</td></tr>`;
+      }
+    }
+    tbody.innerHTML = html;
+
+    // Lazy-load body for expanded card
+    if (expandedIssueNum !== null) {
+      const expandedIss = page.find(i => i.n === expandedIssueNum);
+      if (expandedIss && !(bodyCache[expandedIss.bc] && bodyCache[expandedIss.bc][String(expandedIss.n)])) {
+        loadBody(expandedIss).then(bodyText => {
+          const expandedRow = tbody.querySelector(`tr.expanded-row[data-issue-num="${expandedIss.n}"]`);
+          if (expandedRow) {
+            expandedRow.querySelector("td").innerHTML = renderExpandedCard(expandedIss, bodyText);
+            attachResizeHandlers(tbody);
+          }
+        });
+      }
+    }
+
+    // Attach expand/collapse handlers
+    tbody.querySelectorAll("tr.issue-row").forEach(tr => {
+      tr.addEventListener("click", (e) => {
+        if (e.target.closest("a")) return;
+        const num = parseInt(tr.dataset.issueNum);
+        expandedIssueNum = expandedIssueNum === num ? null : num;
+        renderTable(filtered, tab);
+      });
+    });
+    attachResizeHandlers(tbody);
+  }
+
+  document.getElementById("page-info").textContent = `Page ${tab.page} of ${totalPages}`;
+  document.getElementById("prev-page").disabled = tab.page <= 1;
+  document.getElementById("next-page").disabled = tab.page >= totalPages;
+
+  document.querySelectorAll("thead th").forEach(th => {
+    th.classList.remove("sorted-asc", "sorted-desc");
+    if (tab.sortMode === "new" && th.dataset.sort === tab.sortField) {
+      th.classList.add(tab.sortDir === 1 ? "sorted-asc" : "sorted-desc");
+    }
+  });
+}
+
+function esc(s) {
+  if (!s) return "";
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// --- Active filter chips ---
+function renderActiveFilters(tab) {
+  const el = document.getElementById("active-filters");
+  const f = tab.filters;
+  const chips = [];
+  const names = {s:"State", ty:"Type", hw:"Hardware", mo:"Model", sig:"SIG", lo:"Age", cr:"Author"};
+  for (const [key, label] of Object.entries(names)) {
+    for (const val of f[key]) {
+      chips.push(`<span class="filter-chip"><span class="chip-label">${label}:</span> ${esc(val)} <span class="chip-remove" data-key="${key}" data-val="${esc(val)}">&times;</span></span>`);
+    }
+  }
+  if (chips.length > 1) chips.push(`<span class="clear-all-chip" id="clear-all-filters">Clear all</span>`);
+  el.innerHTML = chips.join("");
+
+  el.querySelectorAll(".chip-remove").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.key, val = btn.dataset.val;
+      f[key] = f[key].filter(v => v !== val);
+      applyFilters();
+    });
+  });
+  const clearBtn = document.getElementById("clear-all-filters");
+  if (clearBtn) clearBtn.addEventListener("click", () => {
+    f.s=[]; f.ty=[]; f.hw=[]; f.mo=[]; f.sig=[]; f.lo=[]; f.cr=[];
+    applyFilters();
+  });
+}
+
+// --- Column filter indicators ---
+function updateColumnFilterIndicators(tab) {
+  const f = tab.filters;
+  document.querySelectorAll("thead th[data-filter]").forEach(th => {
+    const key = th.dataset.filter;
+    const active = f[key] && f[key].length > 0;
+    th.classList.toggle("has-filter", active);
+  });
+}
+
+// --- Column filter dropdowns ---
+let openPopup = null;
+let openPopupCommit = null; // pending commit function for auto-apply on close
+function closePopup() {
+  if (openPopup) {
+    if (openPopupCommit) { openPopupCommit(); openPopupCommit = null; }
+    openPopup.remove();
+    openPopup = null;
+  }
+}
+
+function getValuesForColumn(col) {
+  const counts = {};
+  for (const iss of allIssues) {
+    let vals;
+    if (col === "s") vals = [iss.s];
+    else if (col === "ty") vals = [iss.ty];
+    else if (col === "hw") vals = iss.hw.length ? iss.hw : [];
+    else if (col === "mo") vals = iss.mo.length ? iss.mo : [];
+    else if (col === "sig") vals = iss.sig ? [iss.sig] : [];
+    else if (col === "lo") vals = iss.lo ? [iss.lo] : [];
+    else if (col === "cr") vals = iss.cr ? [iss.cr] : [];
+    else return [];
+    for (const v of vals) counts[v] = (counts[v] || 0) + 1;
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (col === "s") entries.sort((a, b) => (a[0] === "open" ? -1 : 1) - (b[0] === "open" ? -1 : 1));
+  if (col === "lo") { const order = {"New":0,"Long-running":1,"Stale":2}; entries.sort((a, b) => (order[a[0]] ?? 9) - (order[b[0]] ?? 9)); }
+  return entries;
+}
+
+function openColumnFilter(th, col) {
+  closePopup();
+  const tab = getTab();
+  const popup = document.createElement("div");
+  popup.className = "col-filter-popup";
+  openPopup = popup;
+
+  {
+    const values = getValuesForColumn(col);
+    const selected = new Set(tab.filters[col] || []);
+
+    // Commit current selection to tab and re-render
+    function commitSelection() {
+      tab.filters[col] = [...selected];
+      tab.label = buildTabLabel(tab);
+      applyFilters();
+    }
+    // Store commit function so closePopup auto-applies
+    openPopupCommit = commitSelection;
+
+    popup.innerHTML = `
+      <div class="cf-search"><input type="text" placeholder="Search..." autocomplete="off"></div>
+      <div class="cf-options"></div>
+      <div class="cf-actions">
+        <button class="cf-clear">Clear</button>
+        <button class="cf-apply">Apply</button>
+      </div>`;
+    const optionsEl = popup.querySelector(".cf-options");
+    const searchInput = popup.querySelector(".cf-search input");
+    const BATCH = 50;
+    let currentFiltered = values;
+    let rendered = 0;
+    function appendBatch() {
+      const slice = currentFiltered.slice(rendered, rendered + BATCH);
+      if (!slice.length) return;
+      const frag = document.createDocumentFragment();
+      for (const [val, count] of slice) {
+        const label = document.createElement("label");
+        label.className = "cf-option";
+        const loTips = {"New":"Created within the last 14 days","Long-running":"Open for more than 90 days","Stale":"Open, no comments in 30+ days"};
+        const tip = col === "lo" && loTips[val] ? `<span class="sort-info" data-tip="${esc(loTips[val])}" style="margin-left:4px">i</span>` : "";
+        label.innerHTML = `<input type="checkbox" value="${esc(val)}" ${selected.has(val) ? "checked" : ""}><span>${esc(val)}${tip}</span><span class="cf-count">${count}</span>`;
+        label.querySelector("input").addEventListener("change", function() { if (this.checked) selected.add(this.value); else selected.delete(this.value); });
+        frag.appendChild(label);
+      }
+      optionsEl.appendChild(frag);
+      rendered += slice.length;
+    }
+    function renderOptions(filter) {
+      currentFiltered = filter ? values.filter(([v]) => v.toLowerCase().includes(filter.toLowerCase())) : values;
+      optionsEl.innerHTML = "";
+      rendered = 0;
+      appendBatch();
+    }
+    optionsEl.addEventListener("scroll", () => {
+      if (rendered < currentFiltered.length && optionsEl.scrollTop + optionsEl.clientHeight >= optionsEl.scrollHeight - 40) appendBatch();
+    });
+    renderOptions("");
+    searchInput.addEventListener("input", () => renderOptions(searchInput.value));
+    setTimeout(() => searchInput.focus(), 0);
+    popup.querySelector(".cf-apply").addEventListener("click", () => { openPopupCommit = null; commitSelection(); closePopup(); });
+    popup.querySelector(".cf-clear").addEventListener("click", () => { openPopupCommit = null; tab.filters[col] = []; tab.label = buildTabLabel(tab); closePopup(); applyFilters(); });
+  }
+
+  popup.addEventListener("mousedown", (e) => e.stopPropagation());
+  popup.addEventListener("click", (e) => e.stopPropagation());
+  const rect = th.getBoundingClientRect();
+  popup.style.top = rect.bottom + 'px';
+  popup.style.left = Math.max(0, Math.min(rect.left, window.innerWidth - 240)) + 'px';
+  popup.style.right = 'auto';
+  document.body.appendChild(popup);
+  // Re-clamp after render in case popup is wider than 240
+  const popupRect = popup.getBoundingClientRect();
+  if (popupRect.right > window.innerWidth) {
+    popup.style.left = Math.max(0, window.innerWidth - popupRect.width - 8) + 'px';
+  }
+  setTimeout(() => {
+    document.addEventListener("mousedown", function handler(e) {
+      if (!popup.contains(e.target) && e.target !== th && !th.contains(e.target)) { closePopup(); document.removeEventListener("mousedown", handler); }
+    });
+  }, 0);
+}
+
+// --- Tabs ---
+function renderTabs() {
+  const el = document.getElementById("search-tabs");
+  el.innerHTML = "";
+  for (const tab of tabs) {
+    const filtered = getFilteredIssues(tab);
+    const div = document.createElement("div");
+    div.className = "search-tab" + (tab.id === activeTabId ? " active" : "");
+    div.innerHTML = `<span class="tab-label">${esc(tab.label)}</span><span class="tab-count">${filtered.length.toLocaleString()}</span>${tabs.length > 1 ? `<span class="tab-close">&times;</span>` : ""}`;
+    div.querySelector(".tab-label").addEventListener("click", () => switchTab(tab.id));
+    const closeBtn = div.querySelector(".tab-close");
+    if (closeBtn) closeBtn.addEventListener("click", (e) => { e.stopPropagation(); closeTab(tab.id); });
+    el.appendChild(div);
+  }
+  const newBtn = document.createElement("button");
+  newBtn.className = "tab-new";
+  newBtn.textContent = "+";
+  newBtn.title = "New filter tab";
+  newBtn.addEventListener("click", () => createNewTab());
+  el.appendChild(newBtn);
+}
+
+function switchTab(id) {
+  activeTabId = id;
+  document.getElementById("search").value = getTab().query;
+  expandedIssueNum = null;
+  renderTabs(); applyFilters();
+}
+
+function closeTab(id) {
+  tabs = tabs.filter(t => t.id !== id);
+  if (activeTabId === id) { activeTabId = tabs[0].id; document.getElementById("search").value = getTab().query; }
+  renderTabs(); applyFilters();
+}
+
+function createNewTab() {
+  const tab = getTab();
+  tab.label = buildTabLabel(tab);
+  const newTab = newTabState("All Issues");
+  tabs.push(newTab);
+  activeTabId = newTab.id;
+  document.getElementById("search").value = "";
+  expandedIssueNum = null;
+  renderTabs(); applyFilters();
+}
+
+function buildTabLabel(tab) {
+  const parts = [];
+  const f = tab.filters;
+  if (tab.query) parts.push(`"${tab.query}"`);
+  if (f.s.length) parts.push(f.s.join(", "));
+  if (f.ty.length) parts.push(f.ty.join(", "));
+  if (f.hw.length) parts.push(f.hw.join(", "));
+  if (f.mo.length) parts.push(f.mo.join(", "));
+  if (f.sig.length) parts.push(f.sig.join(", "));
+  if (f.lo.length) parts.push(f.lo.join(", "));
+  return parts.length ? parts.join(" + ") : "All Issues";
+}
+
+function updateTabLabel() {
+  const tab = getTab();
+  if (tab) { tab.label = buildTabLabel(tab); renderTabs(); }
+}
+
+function updateSortModeButtons(tab) {
+  document.querySelectorAll("#sort-modes button").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === tab.sortMode);
+  });
+  const labels = {day:"Day", week:"Week", month:"Month", year:"Year", all:"All Time"};
+  document.getElementById("top-period-label").textContent = labels[tab.topPeriod] || "All Time";
+  document.querySelectorAll("#top-period-menu .tp-option").forEach(o => o.classList.toggle("active", o.dataset.period === tab.topPeriod));
+  if (typeof updateDateRangeBtn === "function") updateDateRangeBtn(tab);
+}
+
+// --- Event listeners ---
+let searchTimeout;
+document.getElementById("search").addEventListener("input", () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => { applyFilters(); updateTabLabel(); }, 200);
+});
+
+document.getElementById("prev-page").addEventListener("click", () => {
+  const tab = getTab();
+  if (tab.page > 1) { tab.page--; expandedIssueNum = null; applyFilters(); }
+});
+document.getElementById("next-page").addEventListener("click", () => {
+  const tab = getTab();
+  const totalPages = Math.ceil(getFilteredIssues(tab).length / PAGE_SIZE);
+  if (tab.page < totalPages) { tab.page++; expandedIssueNum = null; applyFilters(); }
+});
+
+// Column headers: sort or filter
+document.querySelectorAll("thead th").forEach(th => {
+  th.addEventListener("click", (e) => {
+    if (openPopup && (e.target.closest(".col-filter-popup") || openPopup.contains(e.target))) return;
+    const filterCol = th.dataset.filter;
+    const sortCol = th.dataset.sort;
+    if (filterCol) {
+      openColumnFilter(th, filterCol);
+    } else if (sortCol) {
+      const tab = getTab();
+      tab.sortMode = "new";
+      if (tab.sortField === sortCol) tab.sortDir *= -1;
+      else { tab.sortField = sortCol; tab.sortDir = sortCol === "ca" || sortCol === "nc" ? -1 : 1; }
+      applyFilters();
+    }
+  });
+});
+
+// Sort mode tabs
+document.querySelectorAll("#sort-modes button").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    if (btn.dataset.mode === "top") {
+      e.stopPropagation();
+      const menu = document.getElementById("top-period-menu");
+      const wasOpen = menu.classList.contains("open");
+      document.getElementById("top-period-menu").classList.remove("open");
+      if (!wasOpen) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.left = (rect.left - btn.parentElement.getBoundingClientRect().left) + 'px';
+        menu.classList.add("open");
+      }
+      // Also activate top mode immediately
+      const tab = getTab();
+      tab.sortMode = "top";
+      tab.page = 1;
+      applyFilters();
+      return;
+    }
+    const tab = getTab();
+    tab.sortMode = btn.dataset.mode;
+    if (tab.sortMode === "new") { tab.sortField = "ca"; tab.sortDir = -1; }
+    tab.page = 1;
+    document.getElementById("top-period-menu").classList.remove("open");
+    applyFilters();
+  });
+});
+
+// Top period dropdown
+const topMenu = document.getElementById("top-period-menu");
+topMenu.addEventListener("mousedown", (e) => e.stopPropagation());
+topMenu.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const opt = e.target.closest(".tp-option");
+  if (!opt) return;
+  const period = opt.dataset.period;
+  const tab = getTab();
+  tab.topPeriod = period;
+  tab.sortMode = "top";
+  tab.page = 1;
+  const labels = {day:"Day", week:"Week", month:"Month", year:"Year", all:"All Time"};
+  document.getElementById("top-period-label").textContent = labels[period];
+  topMenu.querySelectorAll(".tp-option").forEach(o => o.classList.toggle("active", o.dataset.period === period));
+  topMenu.classList.remove("open");
+  applyFilters();
+});
+document.addEventListener("mousedown", (e) => {
+  if (!topMenu.contains(e.target) && e.target.id !== "top-btn" && !e.target.closest("#top-btn")) {
+    topMenu.classList.remove("open");
+  }
+  const drMenu = document.getElementById("date-range-menu");
+  if (!drMenu.contains(e.target) && !e.target.closest("#date-range-btn")) {
+    drMenu.classList.remove("open");
+  }
+});
+
+// Date range button
+const drBtn = document.getElementById("date-range-btn");
+const drMenu = document.getElementById("date-range-menu");
+drMenu.addEventListener("mousedown", (e) => e.stopPropagation());
+drMenu.addEventListener("click", (e) => e.stopPropagation());
+drBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const tab = getTab();
+  document.getElementById("dr-from").value = tab.dateFrom;
+  document.getElementById("dr-to").value = tab.dateTo;
+  drMenu.classList.toggle("open");
+});
+document.getElementById("dr-apply").addEventListener("click", () => {
+  const tab = getTab();
+  tab.dateFrom = document.getElementById("dr-from").value;
+  tab.dateTo = document.getElementById("dr-to").value;
+  tab.page = 1;
+  drMenu.classList.remove("open");
+  updateDateRangeBtn(tab);
+  applyFilters();
+});
+document.getElementById("dr-clear").addEventListener("click", () => {
+  const tab = getTab();
+  tab.dateFrom = "";
+  tab.dateTo = "";
+  tab.page = 1;
+  document.getElementById("dr-from").value = "";
+  document.getElementById("dr-to").value = "";
+  drMenu.classList.remove("open");
+  updateDateRangeBtn(tab);
+  applyFilters();
+});
+function updateDateRangeBtn(tab) {
+  const label = document.getElementById("date-range-label");
+  const btn = document.getElementById("date-range-btn");
+  if (tab.dateFrom && tab.dateTo) { label.textContent = tab.dateFrom + " → " + tab.dateTo; }
+  else if (tab.dateFrom) { label.textContent = "After " + tab.dateFrom; }
+  else if (tab.dateTo) { label.textContent = "Before " + tab.dateTo; }
+  else { label.textContent = "Any date"; }
+  btn.classList.toggle("has-dates", !!(tab.dateFrom || tab.dateTo));
+}
+
+// Sidebar navigation with URL routing
+function switchPanel(tab) {
+  document.querySelectorAll(".sidebar-nav button").forEach(b => b.classList.remove("active"));
+  const btn = document.querySelector(`.sidebar-nav button[data-tab="${tab}"]`);
+  if (btn) btn.classList.add("active");
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  const panel = document.getElementById("panel-" + tab);
+  if (panel) panel.classList.add("active");
+}
+
+document.querySelectorAll(".sidebar-nav button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab;
+    history.pushState(null, "", "/" + tab);
+    switchPanel(tab);
+  });
+});
+
+// Handle browser back/forward
+window.addEventListener("popstate", () => {
+  const tab = location.pathname.replace(/^\//, "") || "dashboard";
+  switchPanel(tab);
+});
+
+// Load initial panel from URL
+{
+  const path = location.pathname.replace(/^\//, "");
+  const validTabs = ["dashboard", "newsfeed", "roadmap", "resources"];
+  if (validTabs.includes(path)) switchPanel(path);
+}
+
+// Pull generated date from roadmap iframe into header
+const rmFrame = document.querySelector('.roadmap-frame');
+if (rmFrame) {
+  rmFrame.addEventListener('load', () => {
+    try {
+      const page = rmFrame.contentDocument.querySelector('.page');
+      if (page) {
+        const gen = page.dataset.generated || '';
+        const meta = document.getElementById('roadmap-meta');
+        if (meta && gen) {
+          meta.textContent = 'Generated ' + gen;
+        }
+      }
+    } catch(e) {}
+  });
+}
+
+// Sidebar collapse toggle
+document.getElementById("sidebar-toggle").addEventListener("click", () => {
+  document.getElementById("sidebar").classList.toggle("collapsed");
+});
+
+// Newsfeed day switcher
+const nfBtns = Array.from(document.querySelectorAll(".nf-date-btn"));
+function nfSwitchTo(btn) {
+  nfBtns.forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".nf-day-panel").forEach(p => p.classList.remove("active"));
+  document.getElementById("nf-" + btn.dataset.nf).classList.add("active");
+  document.getElementById("nf-topbar-title").textContent = btn.dataset.title;
+  document.getElementById("nf-stat-issues").textContent = btn.dataset.issues;
+  document.getElementById("nf-stat-comments").textContent = btn.dataset.comments;
+  document.getElementById("nf-stat-closed").textContent = btn.dataset.closed;
+  const idx = nfBtns.indexOf(btn);
+  document.getElementById("nf-prev").disabled = idx >= nfBtns.length - 1;
+  document.getElementById("nf-next").disabled = idx <= 0;
+}
+nfBtns.forEach(btn => btn.addEventListener("click", () => nfSwitchTo(btn)));
+document.getElementById("nf-prev").addEventListener("click", () => {
+  const idx = nfBtns.findIndex(b => b.classList.contains("active"));
+  if (idx < nfBtns.length - 1) nfSwitchTo(nfBtns[idx + 1]);
+});
+document.getElementById("nf-next").addEventListener("click", () => {
+  const idx = nfBtns.findIndex(b => b.classList.contains("active"));
+  if (idx > 0) nfSwitchTo(nfBtns[idx - 1]);
+});
+// Sidebar collapse/expand
+const nfSidebar = document.getElementById("nf-sidebar");
+const nfExpandBtn = document.getElementById("nf-sidebar-expand");
+document.getElementById("nf-sidebar-collapse").addEventListener("click", () => {
+  nfSidebar.classList.add("collapsed");
+  nfExpandBtn.style.display = "inline-block";
+});
+nfExpandBtn.addEventListener("click", () => {
+  nfSidebar.classList.remove("collapsed");
+  nfExpandBtn.style.display = "none";
+});
+
+init();
+</script>
+</body>
+</html>

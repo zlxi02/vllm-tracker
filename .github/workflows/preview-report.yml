@@ -1,0 +1,27 @@
+name: Preview Report
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-preview-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Materialize preview data
+        run: |
+          mkdir -p data
+          cp data/preview/github_issues_preview.csv data/github_issues.csv
+          cp data/preview/users_preview.csv data/users.csv
+          cp data/preview/issue_comments_preview.csv data/issue_comments.csv
+      - name: Build preview report
+        run: PYTHONPATH=src python -m vllm_issue_tracker.cli refresh
+      - name: Upload preview report
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-report
+          path: outputs/report.html
+

@@ -1,0 +1,51 @@
+source_relation,label_id,_fivetran_synced,color,description,is_default,label,url
+vllm_data_warehouse.github,8341027798,2026-02-27 16:26:24.607000+00:00,C2D391,Tests needed for this PR,False,needs-tests,https://api.github.com/repos/vllm-project/vllm/labels/needs-tests
+vllm_data_warehouse.github,10064656335,2026-02-27 22:20:12.982000+00:00,0366d6,Pull requests that update a dependency file,False,dependencies,https://api.github.com/repos/vllm-project/vllm/labels/dependencies
+vllm_data_warehouse.github,9273486140,2026-02-27 22:20:12.982000+00:00,2bd241,,False,suppress-bc-linter,https://api.github.com/repos/vllm-project/vllm/labels/suppress-bc-linter
+vllm_data_warehouse.github,10241407908,2026-02-27 22:20:12.982000+00:00,c4a5f7,,False,claude-code-assisted,https://api.github.com/repos/vllm-project/vllm/labels/claude-code-assisted
+vllm_data_warehouse.github,8378299690,2026-03-06 14:04:11.073000+00:00,000000,Pull requests that update GitHub Actions code,False,github_actions,https://api.github.com/repos/vllm-project/vllm/labels/github_actions
+vllm_data_warehouse.github,9112819887,2026-03-05 02:04:47.179000+00:00,b54933,Related to RL workflows,False,rl,https://api.github.com/repos/vllm-project/vllm/labels/rl
+vllm_data_warehouse.github,10292436636,2026-03-11 02:04:28.937000+00:00,7E1A2D,,False,v2,https://api.github.com/repos/vllm-project/vllm/labels/v2
+vllm_data_warehouse.github,10338688237,2026-03-10 20:05:03.711000+00:00,ededed,,False,aardvark,https://api.github.com/repos/vllm-project/vllm/labels/aardvark
+vllm_data_warehouse.github,10338688233,2026-03-11 14:04:41.871000+00:00,ededed,,False,codex,https://api.github.com/repos/vllm-project/vllm/labels/codex
+vllm_data_warehouse.github,10178956066,2026-03-22 02:03:23.720000+00:00,65b284,,False,model-bash,https://api.github.com/repos/vllm-project/vllm/labels/model-bash
+vllm_data_warehouse.github,7270252995,2026-03-24 08:04:08.363000+00:00,3D8AE9,anything related with ray,False,ray,https://api.github.com/repos/vllm-project/vllm/labels/ray
+vllm_data_warehouse.github,9219969689,2026-03-25 08:04:01.358000+00:00,496dc2,A vLLM developer is not able to reproduce this problem. Please help us reproduce it!,False,needs reproduction,https://api.github.com/repos/vllm-project/vllm/labels/needs%20reproduction
+vllm_data_warehouse.github,8911193365,2026-03-25 08:04:01.358000+00:00,28b500,,False,startup-ux,https://api.github.com/repos/vllm-project/vllm/labels/startup-ux
+vllm_data_warehouse.github,7614866768,2026-03-25 14:04:42.152000+00:00,5319e7,Prevents stale label being applied,False,keep-open,https://api.github.com/repos/vllm-project/vllm/labels/keep-open
+vllm_data_warehouse.github,10518455382,2026-03-25 20:05:00.433000+00:00,be070f,Pull request determined to be low effort and agent generated,False,closed-as-slop,https://api.github.com/repos/vllm-project/vllm/labels/closed-as-slop
+vllm_data_warehouse.github,9876510257,2026-03-26 20:04:24.630000+00:00,ededed,,False,fb-exported,https://api.github.com/repos/vllm-project/vllm/labels/fb-exported
+vllm_data_warehouse.github,9777614664,2026-03-26 20:04:24.629000+00:00,ededed,,False,meta-exported,https://api.github.com/repos/vllm-project/vllm/labels/meta-exported
+vllm_data_warehouse.github,5135047198,2026-03-27 02:03:52.528000+00:00,7057ff,Good for newcomers,True,good first issue,https://api.github.com/repos/vllm-project/vllm/labels/good%20first%20issue
+vllm_data_warehouse.github,8645622010,2026-03-27 02:03:52.528000+00:00,b60205,Issue about an unexpected test failure in CI,False,ci-failure,https://api.github.com/repos/vllm-project/vllm/labels/ci-failure
+vllm_data_warehouse.github,6718885742,2026-03-27 02:03:52.528000+00:00,24890C,Related to Google TPUs,False,tpu,https://api.github.com/repos/vllm-project/vllm/labels/tpu
+vllm_data_warehouse.github,5547098548,2026-03-27 02:03:52.528000+00:00,D48723,Installation problems,False,installation,https://api.github.com/repos/vllm-project/vllm/labels/installation
+vllm_data_warehouse.github,5135047180,2026-03-27 08:04:09.142000+00:00,0075ca,Improvements or additions to documentation,True,documentation,https://api.github.com/repos/vllm-project/vllm/labels/documentation
+vllm_data_warehouse.github,8745996664,2026-03-27 08:04:09.143000+00:00,DBB0FE,Related to Qwen models,False,qwen,https://api.github.com/repos/vllm-project/vllm/labels/qwen
+vllm_data_warehouse.github,10138218272,2026-03-27 08:04:09.142000+00:00,EB5F1C,vLLM IR: intermediate representation and kernel registration,False,vllm-ir,https://api.github.com/repos/vllm-project/vllm/labels/vllm-ir
+vllm_data_warehouse.github,7652610994,2026-03-27 08:04:09.142000+00:00,fef2c0,Recieved activity after being labelled stale,False,unstale,https://api.github.com/repos/vllm-project/vllm/labels/unstale
+vllm_data_warehouse.github,8745986032,2026-03-27 08:04:09.143000+00:00,0055CC,Related to Llama models,False,llama,https://api.github.com/repos/vllm-project/vllm/labels/llama
+vllm_data_warehouse.github,9665023099,2026-03-27 08:04:09.143000+00:00,006b75,Trigger CI with all tests for wide-ranging PRs,False,ready-run-all-tests,https://api.github.com/repos/vllm-project/vllm/labels/ready-run-all-tests
+vllm_data_warehouse.github,6915642480,2026-03-27 08:04:09.142000+00:00,6A493C,,False,speculative-decoding,https://api.github.com/repos/vllm-project/vllm/labels/speculative-decoding
+vllm_data_warehouse.github,5490716130,2026-03-27 08:04:09.142000+00:00,815D32,Requests to new models,False,new-model,https://api.github.com/repos/vllm-project/vllm/labels/new-model
+vllm_data_warehouse.github,5645279504,2026-03-27 08:04:09.142000+00:00,a2eeef,New feature or request,False,feature request,https://api.github.com/repos/vllm-project/vllm/labels/feature%20request
+vllm_data_warehouse.github,5135047193,2026-03-27 08:04:09.142000+00:00,008672,Extra attention is needed,True,help wanted,https://api.github.com/repos/vllm-project/vllm/labels/help%20wanted
+vllm_data_warehouse.github,7614859685,2026-03-27 08:04:09.142000+00:00,EF9EEA,,False,ci/build,https://api.github.com/repos/vllm-project/vllm/labels/ci/build
+vllm_data_warehouse.github,7290797835,2026-03-27 08:04:09.142000+00:00,E494D5,,False,torch.compile,https://api.github.com/repos/vllm-project/vllm/labels/torch.compile
+vllm_data_warehouse.github,9089517981,2026-03-27 08:04:09.142000+00:00,10A37F,Related to GPT-OSS models,False,gpt-oss,https://api.github.com/repos/vllm-project/vllm/labels/gpt-oss
+vllm_data_warehouse.github,6697501599,2026-03-27 08:04:09.143000+00:00,fef2c0,How to use vllm,False,usage,https://api.github.com/repos/vllm-project/vllm/labels/usage
+vllm_data_warehouse.github,8068298936,2026-03-27 08:04:09.142000+00:00,9810B3,,False,v1,https://api.github.com/repos/vllm-project/vllm/labels/v1
+vllm_data_warehouse.github,7197733874,2026-03-27 08:04:09.143000+00:00,ededed,ONLY add when PR is ready to merge/full CI is needed,False,ready,https://api.github.com/repos/vllm-project/vllm/labels/ready
+vllm_data_warehouse.github,8254826316,2026-03-27 08:04:09.142000+00:00,285D9C,Related to multi-modality (#4194),False,multi-modality,https://api.github.com/repos/vllm-project/vllm/labels/multi-modality
+vllm_data_warehouse.github,6579171167,2026-03-27 08:04:09.143000+00:00,80D2AC,,False,frontend,https://api.github.com/repos/vllm-project/vllm/labels/frontend
+vllm_data_warehouse.github,6775085627,2026-03-27 08:04:09.142000+00:00,D4C5F9,Related to Intel GPU,False,intel-gpu,https://api.github.com/repos/vllm-project/vllm/labels/intel-gpu
+vllm_data_warehouse.github,6478559908,2026-03-27 08:04:09.142000+00:00,DE9220,,False,RFC,https://api.github.com/repos/vllm-project/vllm/labels/RFC
+vllm_data_warehouse.github,5135047172,2026-03-27 08:04:09.142000+00:00,d73a4a,Something isn't working,True,bug,https://api.github.com/repos/vllm-project/vllm/labels/bug
+vllm_data_warehouse.github,7648877658,2026-03-27 08:04:09.143000+00:00,ededed,Over 90 days of inactivity,False,stale,https://api.github.com/repos/vllm-project/vllm/labels/stale
+vllm_data_warehouse.github,8746007475,2026-03-27 08:04:09.143000+00:00,1995FE,Related to DeepSeek models,False,deepseek,https://api.github.com/repos/vllm-project/vllm/labels/deepseek
+vllm_data_warehouse.github,9543357705,2026-03-27 08:04:09.142000+00:00,76B900,,False,nvidia,https://api.github.com/repos/vllm-project/vllm/labels/nvidia
+vllm_data_warehouse.github,9306392211,2026-03-27 08:04:09.142000+00:00,4417cb,,False,kv-connector,https://api.github.com/repos/vllm-project/vllm/labels/kv-connector
+vllm_data_warehouse.github,6114440385,2026-03-27 08:04:09.143000+00:00,B60205,Related to AMD ROCm,False,rocm,https://api.github.com/repos/vllm-project/vllm/labels/rocm
+vllm_data_warehouse.github,8509281801,2026-03-27 08:04:09.143000+00:00,C1E8F1,,False,tool-calling,https://api.github.com/repos/vllm-project/vllm/labels/tool-calling
+vllm_data_warehouse.github,6467979044,2026-03-27 08:04:09.142000+00:00,4cb782,,False,structured-output,https://api.github.com/repos/vllm-project/vllm/labels/structured-output
+vllm_data_warehouse.github,9988761457,2026-03-27 08:04:09.142000+00:00,62bfab,,False,quantization,https://api.github.com/repos/vllm-project/vllm/labels/quantization
