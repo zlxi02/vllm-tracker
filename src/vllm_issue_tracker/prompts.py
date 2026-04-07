@@ -400,6 +400,185 @@ def format_summarize_issues_block(issues: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Newsfeed — daily digest of issue activity
+# ---------------------------------------------------------------------------
+
+GENERATE_NEWSFEED = """\
+You are writing a daily issue digest for the vLLM project — a high-performance \
+LLM inference engine. The audience is vLLM maintainers and internal engineers. \
+Write like a sharp engineering newsletter: opinionated, specific, no fluff.
+
+DATE: {date_display}
+
+CONTEXT — what shipped recently:
+{release_context}
+
+Below are {issue_count} GitHub issues that were created or had significant \
+activity on {date_display}. Each has the format:
+  ISSUE <number> [type: <type>] [state: <state>] [comments: <N>] \
+[models: <models>] [hw: <hw>] | <title> | <body excerpt>
+
+YOUR TASK:
+Write a daily digest as a JSON object with these fields:
+
+1. "headline": A punchy, specific one-line headline for the day. Reference \
+the single biggest story. Examples of GOOD headlines:
+   - "Gemma 4 Dropped 3 Days Ago. The Bugs Are Pouring In."
+   - "v0.19.0 Day Two: 31 Issues. The Floodgates Are Open."
+   - "Qwen3.5 Is Having a Bad Week on New Hardware"
+   BAD headlines (too vague):
+   - "Multiple Issues Reported Today"
+   - "Bug Fixes and Feature Requests"
+
+2. "opening": A 1-2 sentence hook that opens with "Today in vLLM:" and gives \
+the day's narrative in a way that tells the reader whether to pay attention. \
+Be specific about what's happening and why it matters. Examples:
+   - "Today in vLLM: v0.19.0 shipped on April 1 with Gemma 4 support as \
+the flagship feature. Three days later, Gemma 4 is the single biggest source \
+of new issues."
+   - "Today in vLLM: The busiest day of the week — 31 issues filed. The \
+Qwen3.5 thinking mode bug has 14 comments and counting."
+
+3. "callout": An optional "Why this matters" note (1-2 sentences) for the \
+lead story. Include only if there's a strong narrative. Set to null otherwise.
+
+4. "sections": Array of sections, each with:
+   - "title": Section headline (e.g. "Gemma 4 Bugs Continue", "Stability", \
+"Feature Requests & Infrastructure")
+   - "items": Array of issue items, each with:
+     - "number": Issue number
+     - "emoji": A single emoji that captures the issue (use &#NNNNN; HTML entity \
+format): 💥=crash, 🐛=bug, 🔧=fix, 🐢=perf, 🚀=feature, 🔍=investigation, \
+⚠️=warning, 🔗=dependency, 📊=data, 🛑=blocker, ✅=closed/fixed
+     - "title_html": Issue title as HTML (include link: \
+<a href="https://github.com/vllm-project/vllm/issues/NUMBER" target="_blank">\
+#NUMBER</a>). If closed, add \
+<span style="color:var(--green);font-size:11px;">CLOSED</span>
+     - "desc": 1-2 sentence description. Be specific about what's broken and \
+why it matters. Don't just repeat the title.
+
+5. "bottom_line": A 1-3 sentence "Bottom Line" summary in bold. What should \
+an engineering lead take away from today? Be opinionated.
+
+6. "stats": Object with "issues": <total>, "comments": <total comments \
+across all issues>, "closed": <how many were closed/resolved>
+
+Rules:
+- Group related issues into sections with clear themes (not just "Bugs" and "Other")
+- Lead with the most important/engaging story
+- 3-5 sections, 2-6 items per section
+- Flag regressions from recent releases
+- If it's a quiet day, say so — don't manufacture drama
+- Every issue number MUST correspond to a real issue from the input
+
+Return JSON only — no markdown fences, no commentary:
+{{
+  "headline": "...",
+  "opening": "Today in vLLM: ...",
+  "callout": "Why this matters: ..." or null,
+  "sections": [
+    {{
+      "title": "Section Title",
+      "items": [
+        {{
+          "number": 39049,
+          "emoji": "&#128165;",
+          "title_html": "Gemma 4 FP8 dynamic quantization = gibberish output (<a href=\\"https://github.com/vllm-project/vllm/issues/39049\\" target=\\"_blank\\">#39049</a>)",
+          "desc": "FP8 quantization on Gemma 4 produces nonsensical output."
+        }}
+      ]
+    }}
+  ],
+  "bottom_line": "<strong>v0.19.0 is a rough release.</strong> Teams should stay on v0.18.1.",
+  "stats": {{"issues": 11, "comments": 16, "closed": 1}}
+}}
+
+Issues:
+{issues_block}
+"""
+
+
+def format_newsfeed_issues_block(issues: list[dict]) -> str:
+    """Format issues for the newsfeed generation prompt."""
+    lines = []
+    for issue in issues:
+        number = issue["issue_number"]
+        title = issue.get("title", "").replace("\n", " ").strip()
+        body = issue.get("body", "").replace("\n", " ").strip()[:300]
+        itype = issue.get("issue_type") or "Other"
+        state = issue.get("state") or "open"
+        models = issue.get("model_tags") or "General"
+        hardware = issue.get("hardware_tags") or "General"
+        comments = issue.get("comments", 0)
+        lines.append(
+            f"ISSUE {number} [type: {itype}] [state: {state}] [comments: {comments}] "
+            f"[models: {models}] [hw: {hardware}] | {title} | {body}"
+        )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Issue enrichment — per-issue problem/fix summaries
+# ---------------------------------------------------------------------------
+
+ENRICH_ISSUES_BATCH = """\
+You are summarizing GitHub issues from the vLLM project for an engineering \
+roadmap report. For each issue, write a concise two-part summary.
+
+**problem**: 1-3 sentences. What is happening? Be specific about the error, \
+affected model, hardware, and vLLM version. Translate non-English content \
+to English.
+
+**suggested_fix**: 1-3 sentences. Based on the issue details and comments, \
+what is the likely root cause and what should be investigated? If no fix is \
+obvious, suggest debugging steps.
+
+Be direct and technical. An engineer should read the summary and immediately \
+understand what's broken and where to start looking.
+
+Below are {batch_size} issues. Each has the format:
+  ISSUE <number> | <title> | <body excerpt> | COMMENTS: <comment excerpts>
+
+Return JSON only — no markdown fences, no commentary:
+[
+  {{
+    "issue_number": 1234,
+    "problem": "...",
+    "suggested_fix": "..."
+  }}
+]
+
+Issues:
+{issues_block}
+"""
+
+
+def format_enrich_issues_block(issues: list[dict]) -> str:
+    """Format issues for the enrichment prompt.
+
+    Each dict should have: issue_number, title, body.
+    Optionally: comments (list of dicts with author, body).
+    """
+    lines = []
+    for issue in issues:
+        number = issue["issue_number"]
+        title = issue.get("title", "").replace("\n", " ").strip()
+        body = issue.get("body", "").replace("\n", " ").strip()[:1000]
+        comments_raw = issue.get("comments", [])
+        if comments_raw:
+            comment_strs = []
+            for c in comments_raw[:5]:
+                cauthor = c.get("author", "?")
+                cbody = c.get("body", "").replace("\n", " ").strip()[:300]
+                comment_strs.append(f"@{cauthor}: {cbody}")
+            comments_text = " | ".join(comment_strs)
+        else:
+            comments_text = "(none)"
+        lines.append(f"ISSUE {number} | {title} | {body} | COMMENTS: {comments_text}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Helpers for formatting prompt inputs
 # ---------------------------------------------------------------------------
 

@@ -795,6 +795,397 @@ async def dashboard_rank_and_summarize(
 
 
 # ---------------------------------------------------------------------------
+# Issue enrichment — per-issue problem/fix summaries
+# ---------------------------------------------------------------------------
+
+
+async def dashboard_enrich_issues(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    force: bool = False,
+) -> dict:
+    """Generate problem/suggested_fix summaries for issues in the roadmap.
+
+    Reads dashboard_summary.json to find which issue numbers appear in the
+    roadmap. Fetches issue details from SQLite, sends batches to LLM,
+    and writes enrichments to build/issue_enrichments.json.
+
+    If force=False, skips issues that already have enrichments.
+    """
+    from .prompts import ENRICH_ISSUES_BATCH, format_enrich_issues_block
+
+    llm = settings.llm
+    summary_path = settings.build_dir / "dashboard_summary.json"
+    enrichments_path = settings.build_dir / "issue_enrichments.json"
+
+    if not summary_path.exists():
+        print("Summary not found. Run `dashboard-summarize` first.")
+        return {}
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    # Collect all issue numbers that appear in the roadmap
+    roadmap_issue_nums: set[int] = set()
+    for sig_data in summary.get("sig_summaries", []):
+        for cluster in sig_data.get("clusters", []):
+            for iss in cluster.get("issues", []):
+                roadmap_issue_nums.add(iss["number"])
+
+    # Load existing enrichments
+    existing: dict[int, dict] = {}
+    if enrichments_path.exists():
+        raw = json.loads(enrichments_path.read_text(encoding="utf-8"))
+        existing = {e["issue_number"]: e for e in raw.get("enrichments", [])}
+
+    # Determine which issues need enrichment
+    if force:
+        todo_nums = roadmap_issue_nums
+    else:
+        todo_nums = roadmap_issue_nums - set(existing.keys())
+
+    if not todo_nums:
+        print(f"All {len(roadmap_issue_nums)} roadmap issues already enriched. Use --force to re-enrich.")
+        return {"enrichments": list(existing.values())}
+
+    print(f"Enriching {len(todo_nums)} issues ({len(existing)} already done, {len(roadmap_issue_nums)} total in roadmap)...")
+
+    # Fetch issue details + comments from SQLite
+    placeholders = ",".join("?" * len(todo_nums))
+    rows = conn.execute(
+        f"""
+        SELECT issue_number, title, body, state, created_at, creator_login
+        FROM issues WHERE issue_number IN ({placeholders})
+        """,
+        list(todo_nums),
+    ).fetchall()
+
+    # Fetch comments for these issues
+    issue_id_rows = conn.execute(
+        f"SELECT issue_number, issue_id FROM issues WHERE issue_number IN ({placeholders})",
+        list(todo_nums),
+    ).fetchall()
+    num_to_id = {r["issue_number"]: r["issue_id"] for r in issue_id_rows}
+
+    comments_by_num: dict[int, list[dict]] = {}
+    try:
+        for num, iid in num_to_id.items():
+            comment_rows = conn.execute(
+                "SELECT user_id, created_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at LIMIT 5",
+                (iid,),
+            ).fetchall()
+            if comment_rows:
+                comments_by_num[num] = [{"author": r["user_id"] or "?", "body": ""} for r in comment_rows]
+    except Exception:
+        pass  # comments table may not have useful data
+
+    # Build issue dicts for the prompt
+    issues_for_prompt = []
+    for row in rows:
+        num = row["issue_number"]
+        issues_for_prompt.append({
+            "issue_number": num,
+            "title": row["title"] or "",
+            "body": row["body"] or "",
+            "comments": comments_by_num.get(num, []),
+        })
+
+    # Batch and send to LLM
+    batch_size = llm.batch_size
+    batches = [issues_for_prompt[i:i + batch_size] for i in range(0, len(issues_for_prompt), batch_size)]
+
+    prompts = []
+    for batch in batches:
+        issues_block = format_enrich_issues_block(batch)
+        prompts.append(ENRICH_ISSUES_BATCH.format(
+            batch_size=len(batch),
+            issues_block=issues_block,
+        ))
+
+    raw_responses = await _run_concurrent(
+        llm, prompts, desc="Enrich issues", max_tokens=8192
+    )
+
+    # Parse responses and merge with existing
+    new_count = 0
+    for resp in raw_responses:
+        try:
+            parsed = _parse_json_response(resp)
+            if isinstance(parsed, list):
+                for item in parsed:
+                    num = item.get("issue_number")
+                    if num:
+                        existing[num] = {
+                            "issue_number": num,
+                            "problem": item.get("problem", ""),
+                            "suggested_fix": item.get("suggested_fix", ""),
+                        }
+                        new_count += 1
+        except (json.JSONDecodeError, IndexError, KeyError) as e:
+            print(f"  Warning: failed to parse enrichment response: {e}")
+
+    # Write enrichments
+    output = {"enrichments": list(existing.values())}
+    enrichments_path.write_text(
+        json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"Enriched {new_count} issues. Total: {len(existing)}. Written to {enrichments_path}")
+    return output
+
+
+# ---------------------------------------------------------------------------
+# Newsfeed — daily digest generation
+# ---------------------------------------------------------------------------
+
+
+async def generate_newsfeed(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    target_date: str | None = None,
+    days: int = 1,
+) -> dict:
+    """Generate a daily newsfeed digest for issues active on a given date.
+
+    target_date: YYYY-MM-DD string, defaults to today (PST).
+    days: how many days to generate (counting backwards from target_date).
+    """
+    from datetime import datetime, timedelta, timezone
+    from .prompts import GENERATE_NEWSFEED, format_newsfeed_issues_block
+
+    llm = settings.llm
+
+    if target_date is None:
+        # Default to today in PST
+        pst = timezone(timedelta(hours=-7))
+        target_date = datetime.now(pst).strftime("%Y-%m-%d")
+
+    release_context = _fetch_release_notes(n=3)
+
+    newsfeed_dir = settings.build_dir / "newsfeed"
+    newsfeed_dir.mkdir(parents=True, exist_ok=True)
+
+    all_digests = []
+
+    for day_offset in range(days):
+        dt = datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=day_offset)
+        date_str = dt.strftime("%Y-%m-%d")
+        next_date = (dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        date_display = dt.strftime("%A, %B %-d")
+
+        output_path = newsfeed_dir / f"{date_str}.json"
+
+        # Query issues created or updated on this date
+        rows = conn.execute(
+            """
+            SELECT issue_number, title, body, state, issue_type,
+                   model_tags, hardware_tags, number_of_comments,
+                   created_at, updated_at
+            FROM issues
+            WHERE (created_at >= ? AND created_at < ?)
+               OR (updated_at >= ? AND updated_at < ?
+                   AND created_at < ?)
+            ORDER BY number_of_comments DESC, created_at DESC
+            """,
+            (date_str, next_date, date_str, next_date, date_str),
+        ).fetchall()
+
+        issues = []
+        for r in rows:
+            issues.append({
+                "issue_number": r["issue_number"],
+                "title": r["title"],
+                "body": r["body"] or "",
+                "state": r["state"] or "open",
+                "issue_type": r["issue_type"],
+                "model_tags": r["model_tags"] or "General",
+                "hardware_tags": r["hardware_tags"] or "General",
+                "comments": r["number_of_comments"] or 0,
+            })
+
+        if not issues:
+            print(f"  {date_str}: No issues found, skipping.")
+            continue
+
+        print(f"  {date_str}: {len(issues)} issues found, generating digest...")
+
+        issues_block = format_newsfeed_issues_block(issues[:60])
+        prompt = GENERATE_NEWSFEED.format(
+            date_display=date_display,
+            release_context=release_context,
+            issue_count=len(issues),
+            issues_block=issues_block,
+        )
+
+        raw = await _call_llm(llm, prompt, max_tokens=8192)
+        digest = _parse_json_response(raw)
+        digest["date"] = date_str
+        digest["date_display"] = date_display
+
+        output_path.write_text(
+            json.dumps(digest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        all_digests.append(digest)
+        print(f"  {date_str}: Done — \"{digest.get('headline', '?')}\"")
+
+    # Write index of all available digests
+    _rebuild_newsfeed_index(newsfeed_dir)
+
+    return {"digests": all_digests}
+
+
+def _rebuild_newsfeed_index(newsfeed_dir: Path) -> None:
+    """Rebuild newsfeed/index.json from all daily digest files."""
+    entries = []
+    for f in sorted(newsfeed_dir.glob("2*.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            entries.append({
+                "date": data.get("date", f.stem),
+                "date_display": data.get("date_display", ""),
+                "headline": data.get("headline", ""),
+                "stats": data.get("stats", {}),
+            })
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    index_path = newsfeed_dir / "index.json"
+    index_path.write_text(
+        json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"Newsfeed index: {len(entries)} days. Written to {index_path}")
+
+
+def render_newsfeed_html(settings: Settings) -> str:
+    """Render newsfeed panel HTML from all daily digest JSON files.
+
+    Returns the inner HTML for the newsfeed panel (day panels + sidebar buttons).
+    """
+    newsfeed_dir = settings.build_dir / "newsfeed"
+    if not newsfeed_dir.exists():
+        return ""
+
+    digests = []
+    for f in sorted(newsfeed_dir.glob("2*.json"), reverse=True):
+        try:
+            digests.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    if not digests:
+        return ""
+
+    from datetime import datetime
+
+    # Build sidebar buttons
+    sidebar_buttons = []
+    for i, d in enumerate(digests):
+        date_str = d.get("date", "")
+        stats = d.get("stats", {})
+        issue_count = stats.get("issues", 0)
+        comments = stats.get("comments", 0)
+        closed = stats.get("closed", 0)
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        short_date = dt.strftime("%a, %B %-d")
+        panel_id = date_str.replace("-", "")
+        active = " active" if i == 0 else ""
+        today_label = ""
+        if i == 0:
+            today_label = '<span style="color:var(--primary);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Latest</span><br>'
+        title_display = d.get("date_display", short_date)
+        sidebar_buttons.append(
+            f'<button class="nf-date-btn{active}" data-nf="{panel_id}" '
+            f'data-title="{title_display}" '
+            f'data-issues="{issue_count}" data-comments="{comments}" data-closed="{closed}">'
+            f'{today_label}{short_date} <span class="nf-date-count">{issue_count} issues</span></button>'
+        )
+
+    # Build day panels
+    day_panels = []
+    for i, d in enumerate(digests):
+        date_str = d.get("date", "")
+        panel_id = date_str.replace("-", "")
+        active = " active" if i == 0 else ""
+
+        headline = d.get("headline", "Daily Digest")
+        opening = d.get("opening", "")
+        callout = d.get("callout")
+        sections = d.get("sections", [])
+        bottom_line = d.get("bottom_line", "")
+
+        callout_html = ""
+        if callout:
+            callout_html = f'<div class="nf-callout"><strong>Why this matters:</strong> {callout}</div>'
+
+        sections_html = []
+        # First section: headline + opening + callout + first section items
+        first_section_items = ""
+        if sections:
+            first = sections[0]
+            items_html = "".join(
+                f'<div class="nf-item"><span class="nf-emoji">{item.get("emoji", "&#128196;")}</span>'
+                f'<div class="nf-item-body"><div class="nf-item-title">{item.get("title_html", "")}</div>'
+                f'<div class="nf-item-desc">{item.get("desc", "")}</div></div></div>'
+                for item in first.get("items", [])
+            )
+            first_section_items = items_html
+
+        sections_html.append(
+            f'<div class="nf-section">'
+            f'<h2>{headline}</h2>'
+            f'<p class="nf-lead">{opening}</p>'
+            f'{callout_html}'
+            f'{first_section_items}'
+            f'</div>'
+        )
+
+        # Remaining sections
+        for section in sections[1:]:
+            items_html = "".join(
+                f'<div class="nf-item"><span class="nf-emoji">{item.get("emoji", "&#128196;")}</span>'
+                f'<div class="nf-item-body"><div class="nf-item-title">{item.get("title_html", "")}</div>'
+                f'<div class="nf-item-desc">{item.get("desc", "")}</div></div></div>'
+                for item in section.get("items", [])
+            )
+            sections_html.append(
+                f'<div class="nf-section">'
+                f'<h2>{section.get("title", "")}</h2>'
+                f'{items_html}'
+                f'</div>'
+            )
+
+        # Bottom line
+        sections_html.append(
+            f'<div class="nf-section">'
+            f'<h2>The Bottom Line</h2>'
+            f'<p class="nf-lead" style="margin-bottom:0;">{bottom_line}</p>'
+            f'</div>'
+        )
+        sections_html.append(
+            f'<div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:12px;">'
+            f'Generated from vLLM GitHub issues &middot; {d.get("date_display", date_str)}</div>'
+        )
+
+        day_panels.append(
+            f'<div class="nf-day-panel{active}" id="nf-{panel_id}">\n'
+            + "\n".join(sections_html)
+            + "\n</div>"
+        )
+
+    # First digest stats for the topbar defaults
+    first = digests[0]
+    first_stats = first.get("stats", {})
+    first_title = first.get("date_display", "")
+
+    return {
+        "sidebar_buttons": "\n".join(sidebar_buttons),
+        "day_panels": "\n\n".join(day_panels),
+        "default_title": first_title,
+        "default_issues": first_stats.get("issues", 0),
+        "default_comments": first_stats.get("comments", 0),
+        "default_closed": first_stats.get("closed", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Convenience runners (sync wrappers)
 # ---------------------------------------------------------------------------
 
@@ -831,6 +1222,24 @@ def run_dashboard_rank(settings: Settings) -> dict:
     conn.row_factory = sqlite3.Row
     try:
         return asyncio.run(dashboard_rank_and_summarize(conn, settings))
+    finally:
+        conn.close()
+
+
+def run_generate_newsfeed(settings: Settings, target_date: str | None = None, days: int = 1) -> dict:
+    conn = sqlite3.connect(settings.sqlite_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return asyncio.run(generate_newsfeed(conn, settings, target_date, days))
+    finally:
+        conn.close()
+
+
+def run_dashboard_enrich(settings: Settings, force: bool = False) -> dict:
+    conn = sqlite3.connect(settings.sqlite_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return asyncio.run(dashboard_enrich_issues(conn, settings, force))
     finally:
         conn.close()
 

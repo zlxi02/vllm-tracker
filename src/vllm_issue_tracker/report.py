@@ -60,7 +60,14 @@ def build_roadmap_report(settings: Settings) -> Path:
         finally:
             conn.close()
 
-    html_text = render_roadmap_html(summary, total_issues, total_classified, issue_details)
+    # Load issue enrichments (problem/fix summaries) if available
+    enrichments: dict[int, dict] = {}
+    enrichments_path = settings.build_dir / "issue_enrichments.json"
+    if enrichments_path.exists():
+        raw = json.loads(enrichments_path.read_text(encoding="utf-8"))
+        enrichments = {e["issue_number"]: e for e in raw.get("enrichments", [])}
+
+    html_text = render_roadmap_html(summary, total_issues, total_classified, issue_details, enrichments)
     settings.roadmap_path.write_text(html_text, encoding="utf-8")
     return settings.roadmap_path
 
@@ -68,9 +75,12 @@ def build_roadmap_report(settings: Settings) -> Path:
 def render_roadmap_html(
     summary: dict, total_issues: int = 0, total_classified: int = 0,
     issue_details: dict[int, dict] | None = None,
+    enrichments: dict[int, dict] | None = None,
 ) -> str:
     if issue_details is None:
         issue_details = {}
+    if enrichments is None:
+        enrichments = {}
     sig_summaries = summary.get("sig_summaries", [])
     total_clusters = sum(len(s.get("clusters", [])) for s in sig_summaries)
 
@@ -107,7 +117,7 @@ def render_roadmap_html(
     """
 
     sig_sections = "".join(
-        _render_roadmap_sig(sig_data, idx, issue_details)
+        _render_roadmap_sig(sig_data, idx, issue_details, enrichments)
         for idx, sig_data in enumerate(sig_summaries)
     )
 
@@ -251,25 +261,30 @@ def render_roadmap_html(
       line-height: 1.5;
     }}
     .issue-detail.open {{ display: block; }}
-    .issue-detail-title {{ font-weight: 600; margin-bottom: 4px; }}
+    .issue-detail-title {{ font-weight: 600; margin-bottom: 6px; }}
     .issue-detail-body {{ color: var(--text-secondary); margin-bottom: 6px; white-space: pre-wrap; word-break: break-word; }}
     .issue-detail-meta {{ font-size: 11px; color: var(--text-secondary); }}
+    .issue-enrichment {{ margin: 8px 0; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid var(--primary); }}
+    .issue-enrichment-item {{ font-size: 12px; line-height: 1.6; color: var(--text); margin-bottom: 4px; }}
+    .issue-enrichment-item:last-child {{ margin-bottom: 0; }}
+    .issue-enrichment-item strong {{ color: var(--text); }}
     .issues-more {{
       display: none;
     }}
     .issues-more.open {{ display: block; }}
     .more-issues-btn, .show-more-btn {{
       background: none;
-      border: 1px solid var(--border);
+      border: none;
       border-radius: var(--radius);
-      padding: 4px 12px;
+      padding: 4px 8px;
       font-size: 12px;
-      color: var(--primary);
+      color: var(--text-secondary);
       cursor: pointer;
       font-family: inherit;
       margin-top: 6px;
+      transition: background 0.15s;
     }}
-    .more-issues-btn:hover, .show-more-btn:hover {{ background: var(--primary-light); }}
+    .more-issues-btn:hover, .show-more-btn:hover {{ background: rgba(0,0,0,0.05); }}
     .hidden-rows {{ display: none; }}
     .hidden-rows.open {{ display: table-row-group; }}
     a {{ color: var(--primary); text-decoration: none; }}
@@ -336,7 +351,7 @@ def render_roadmap_html(
 
 _cluster_id_counter = 0
 
-def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]) -> str:
+def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict], enrichments: dict[int, dict] | None = None) -> str:
     sig_group = sig_data.get("sig_group", "Unknown")
     clusters = sig_data.get("clusters", [])
     if not clusters:
@@ -351,7 +366,7 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
     hidden_clusters = clusters[visible_limit:]
 
     visible_rows = "".join(
-        _render_roadmap_cluster_row(cluster, rank, issue_details)
+        _render_roadmap_cluster_row(cluster, rank, issue_details, enrichments)
         for rank, cluster in enumerate(visible_clusters, 1)
     )
 
@@ -359,7 +374,7 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
     if hidden_clusters:
         hidden_id = f"sig-{idx}-more"
         hidden_rows = "".join(
-            _render_roadmap_cluster_row(cluster, rank, issue_details)
+            _render_roadmap_cluster_row(cluster, rank, issue_details, enrichments)
             for rank, cluster in enumerate(hidden_clusters, visible_limit + 1)
         )
         hidden_html = f"""
@@ -403,10 +418,12 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
     """
 
 
-def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[int, dict]) -> str:
+def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[int, dict], enrichments: dict[int, dict] | None = None) -> str:
     global _cluster_id_counter
     _cluster_id_counter += 1
     cid = f"cl-{_cluster_id_counter}"
+    if enrichments is None:
+        enrichments = {}
 
     main_fix = html.escape(cluster.get("main_fix", ""))
     issues = cluster.get("issues", [])
@@ -420,17 +437,29 @@ def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[in
         num = iss.get("number", 0)
         summary = html.escape(iss.get("summary", ""))
         details = issue_details.get(num, {})
+        enrichment = enrichments.get(num, {})
         url = details.get("url", f"{GITHUB_BASE}{num}")
         title = html.escape(details.get("title", ""))
         body_preview = html.escape(details.get("body_preview", ""))
         created = details.get("created_at", "")
+        problem = html.escape(enrichment.get("problem", ""))
+        suggested_fix = html.escape(enrichment.get("suggested_fix", ""))
 
         detail_html = ""
-        if title or body_preview:
+        if title or body_preview or problem:
+            enrichment_html = ""
+            if problem:
+                enrichment_html = f"""
+                <div class="issue-enrichment">
+                  <div class="issue-enrichment-item"><strong>Problem:</strong> {problem}</div>
+                  <div class="issue-enrichment-item"><strong>Suggested Fix:</strong> {suggested_fix}</div>
+                </div>"""
+
             detail_html = f"""
             <div class="issue-detail" id="{detail_id}">
               <div class="issue-detail-title">{title}</div>
-              {'<div class="issue-detail-body">' + body_preview + '</div>' if body_preview else ''}
+              {enrichment_html}
+              {'<div class="issue-detail-body">' + body_preview + '</div>' if body_preview and not problem else ''}
               <div class="issue-detail-meta">
                 {'Created: ' + created + ' &middot; ' if created else ''}
                 <a href="{html.escape(url)}" target="_blank">View on GitHub &rarr;</a>

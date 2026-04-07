@@ -153,6 +153,106 @@ def command_dashboard_rank(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_dashboard_enrich(args: argparse.Namespace) -> int:
+    _load_dotenv()
+    settings = get_settings()
+    if not settings.sqlite_path.exists():
+        print("Database not found. Run `load` first.")
+        return 1
+    summary_path = settings.build_dir / "dashboard_summary.json"
+    if not summary_path.exists():
+        print("Summary not found. Run `dashboard-summarize` first.")
+        return 1
+    from .llm_classify import run_dashboard_enrich
+    run_dashboard_enrich(settings, force=args.force)
+    return 0
+
+
+def command_generate_newsfeed(args: argparse.Namespace) -> int:
+    _load_dotenv()
+    settings = get_settings()
+    if not settings.sqlite_path.exists():
+        print("Database not found. Run `load` first.")
+        return 1
+    from .llm_classify import run_generate_newsfeed
+    result = run_generate_newsfeed(
+        settings,
+        target_date=args.date,
+        days=args.days,
+    )
+    digests = result.get("digests", [])
+    if not digests:
+        print("No digests generated.")
+        return 1
+    # Rebuild the newsfeed HTML in index.html
+    _rebuild_newsfeed_in_dashboard(settings)
+    return 0
+
+
+def _rebuild_newsfeed_in_dashboard(settings: Settings) -> None:
+    """Rebuild the newsfeed panel in dashboard/index.html from generated digests."""
+    from .llm_classify import render_newsfeed_html
+
+    result = render_newsfeed_html(settings)
+    if not result:
+        print("No newsfeed data to render.")
+        return
+
+    dashboard_html_path = settings.root_dir / "dashboard" / "index.html"
+    if not dashboard_html_path.exists():
+        print(f"Dashboard not found at {dashboard_html_path}")
+        return
+
+    html = dashboard_html_path.read_text(encoding="utf-8")
+
+    import re
+
+    # Replace sidebar buttons
+    sidebar_pattern = re.compile(
+        r'(<!-- nf-sidebar-buttons-start -->).+?(<!-- nf-sidebar-buttons-end -->)',
+        re.DOTALL,
+    )
+    html = sidebar_pattern.sub(
+        rf'\1\n{result["sidebar_buttons"]}\n\2',
+        html,
+    )
+
+    # Replace day panels
+    panels_pattern = re.compile(
+        r'(<!-- nf-day-panels-start -->).+?(<!-- nf-day-panels-end -->)',
+        re.DOTALL,
+    )
+    html = panels_pattern.sub(
+        rf'\1\n{result["day_panels"]}\n\2',
+        html,
+    )
+
+    # Update topbar defaults
+    html = re.sub(
+        r'(<span class="nf-topbar-title" id="nf-topbar-title">)[^<]*(</span>)',
+        rf'\g<1>{result["default_title"]}\2',
+        html,
+    )
+    html = re.sub(
+        r'(<div class="nf-stat-num" id="nf-stat-issues">)\d*(</div>)',
+        rf'\g<1>{result["default_issues"]}\2',
+        html,
+    )
+    html = re.sub(
+        r'(<div class="nf-stat-num" id="nf-stat-comments">)\d*(</div>)',
+        rf'\g<1>{result["default_comments"]}\2',
+        html,
+    )
+    html = re.sub(
+        r'(<div class="nf-stat-num" id="nf-stat-closed">)\d*(</div>)',
+        rf'\g<1>{result["default_closed"]}\2',
+        html,
+    )
+
+    dashboard_html_path.write_text(html, encoding="utf-8")
+    print(f"Newsfeed updated in {dashboard_html_path}")
+
+
 def command_refresh(args: argparse.Namespace) -> int:
     """Run the full pipeline: load → classify → summarize → rank → build-roadmap.
 
@@ -282,9 +382,29 @@ def build_parser() -> argparse.ArgumentParser:
         "dashboard-rank",
         help="Rank SIGs by priority and generate executive summary",
     )
+    enrich_parser = subparsers.add_parser(
+        "dashboard-enrich",
+        help="Generate problem/fix summaries for roadmap issues",
+    )
+    enrich_parser.add_argument(
+        "--force", action="store_true", help="Re-enrich already-enriched issues"
+    )
     subparsers.add_parser(
         "build-roadmap",
         help="Render roadmap HTML from dashboard summary",
+    )
+
+    nf_parser = subparsers.add_parser(
+        "generate-newsfeed",
+        help="Generate daily issue digest (default: today in PST)",
+    )
+    nf_parser.add_argument(
+        "--date", type=str, default=None,
+        help="Target date YYYY-MM-DD (default: today PST)",
+    )
+    nf_parser.add_argument(
+        "--days", type=int, default=1,
+        help="Number of days to generate counting back from --date (default: 1)",
     )
 
     return parser
@@ -302,7 +422,9 @@ def main(argv: list[str] | None = None) -> int:
         "dashboard-summarize": lambda: command_dashboard_summarize(args),
         "dashboard-prioritize": lambda: command_dashboard_prioritize(args),
         "dashboard-rank": lambda: command_dashboard_rank(args),
+        "dashboard-enrich": lambda: command_dashboard_enrich(args),
         "build-roadmap": lambda: command_build_roadmap(),
+        "generate-newsfeed": lambda: command_generate_newsfeed(args),
     }
     return handlers[args.command]()
 

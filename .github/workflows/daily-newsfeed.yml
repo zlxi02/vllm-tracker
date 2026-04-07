@@ -1,0 +1,68 @@
+name: Daily Newsfeed
+
+on:
+  schedule:
+    # 11:59 PM PT = 06:59 UTC next day
+    - cron: "59 6 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target date (YYYY-MM-DD), default today PST"
+        required: false
+      days:
+        description: "Number of days to generate"
+        required: false
+        default: "1"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: newsfeed
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Load latest data (incremental)
+        run: python -m vllm_issue_tracker.cli load
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Generate newsfeed
+        run: |
+          ARGS="generate-newsfeed"
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.date }}"
+          fi
+          if [ -n "${{ github.event.inputs.days }}" ]; then
+            ARGS="$ARGS --days ${{ github.event.inputs.days }}"
+          fi
+          python -m vllm_issue_tracker.cli $ARGS
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Commit updated dashboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dashboard/index.html build/newsfeed/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            DATE=$(TZ=America/Los_Angeles date +%Y-%m-%d)
+            git commit -m "newsfeed: generate daily digest for ${DATE}"
+            git push
+          fi
