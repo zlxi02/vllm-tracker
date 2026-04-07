@@ -1636,36 +1636,14 @@ function switchPanel(tab) {
   if (panel) panel.classList.add("active");
 }
 
-// Detect base path (e.g. "/vllm-tracker" on GitHub Pages, "" locally)
-const _basePath = location.pathname.replace(/\/(dashboard|newsfeed|roadmap|resources|index\.html)?\/?$/, "") || "";
-
 document.querySelectorAll(".sidebar-nav button").forEach(btn => {
   btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab;
-    history.pushState(null, "", _basePath + "/" + tab);
-    switchPanel(tab);
+    switchPanel(btn.dataset.tab);
   });
 });
 
-// Handle browser back/forward
-window.addEventListener("popstate", () => {
-  const tab = location.pathname.replace(_basePath + "/", "").replace(/^\//, "") || "dashboard";
-  switchPanel(tab);
-});
-
-// Load initial panel from URL or hash (hash used for GitHub Pages 404 redirect)
-{
-  const validTabs = ["dashboard", "newsfeed", "roadmap", "resources"];
-  const hashRoute = location.hash.replace(/^#\/?/, "");
-  const pathRoute = location.pathname.replace(_basePath + "/", "").replace(/^\//, "");
-  const route = hashRoute || pathRoute;
-  if (validTabs.includes(route)) {
-    switchPanel(route);
-    if (hashRoute && history.replaceState) {
-      history.replaceState(null, "", _basePath + "/" + route);
-    }
-  }
-}
+// Always start on dashboard tab
+switchPanel("dashboard");
 
 // Pull generated date from roadmap iframe into header
 const rmFrame = document.querySelector('.roadmap-frame');
