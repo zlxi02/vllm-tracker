@@ -56,44 +56,27 @@ The 100 selected issues are split into 10 batches of 10. LLM (Opus with extended
 
 ### Newsfeed
 
-A daily LLM-generated digest of issue activity.
-
-**Input** — The LLM receives:
-- All issues created or updated on the target date (up to 60), each with title, body excerpt (300 chars), type, state, comment count, model tags, and hardware tags — sorted by engagement
-- The 3 most recent vLLM release notes (full text) for context on what shipped recently
-- The target date
-
-**Output** — A structured JSON digest with:
-- A punchy headline and "Today in vLLM:" opening
-- 3-5 themed sections grouping related issues (e.g. "Gemma 4 Bugs Continue", "MoE Infrastructure Growing Pains")
-- Per-issue entries with emoji, linked title, and 1-2 sentence description
-- An editorial "Bottom Line" takeaway
-- Stats (issue count, comments, closed)
-
-Each day is saved as a separate JSON file in `build/newsfeed/`. The HTML is rebuilt from all available day files on each run, so the archive grows over time.
+Daily LLM-generated digest. **Input**: that day's issues (up to 60, sorted by engagement) + last 3 release notes for context. **Output**: headline, "Today in vLLM:" opening, 3-5 themed sections with per-issue summaries, and a "Bottom Line" editorial.
 
 ```bash
-# Generate today's digest
-python3 -m vllm_issue_tracker.cli generate-newsfeed
-
-# Backfill a specific date range
-python3 -m vllm_issue_tracker.cli generate-newsfeed --date 2026-04-05 --days 4
+python3 -m vllm_issue_tracker.cli generate-newsfeed                          # today
+python3 -m vllm_issue_tracker.cli generate-newsfeed --date 2026-04-05 --days 4  # backfill
 ```
 
 ### Running the pipeline
 
-| Step | Command | Time | Cost | Model |
-|------|---------|------|------|-------|
-| Load | `python3 -m vllm_issue_tracker.cli load` | ~30s | Free | — |
-| Classify | `python3 -m vllm_issue_tracker.cli dashboard-classify` | ~2-5 min | ~$1 | Sonnet |
-| Build data | `cd dashboard && python3 build_data.py` | ~30s | Free | — |
-| Prelims | `python3 -m vllm_issue_tracker.cli dashboard-prelims` | ~15 min | ~$30 | Opus |
-| Finals | `python3 -m vllm_issue_tracker.cli dashboard-finals` | ~6 min | ~$20 | Opus |
-| Enrich | `python3 -m vllm_issue_tracker.cli dashboard-enrich --force` | ~5 min | ~$6 | Sonnet |
-| Rank | `python3 -m vllm_issue_tracker.cli dashboard-rank` | ~30s | ~$1 | Opus |
-| Build report | `python3 -m vllm_issue_tracker.cli build-roadmap` | instant | Free | — |
-| Newsfeed | `python3 -m vllm_issue_tracker.cli generate-newsfeed` | ~30s | ~$0.50 | Sonnet |
-| **Total** | | **~30 min** | **~$59** | |
+| Step | Command | Description | Time | Cost | Model |
+|------|---------|-------------|------|------|-------|
+| Load | `cli load` | Parse CSV into SQLite, incremental by default | ~30s | Free | — |
+| Classify | `cli dashboard-classify` | Assign SIG, type, model/hw tags per issue | ~2-5 min | ~$1 | Sonnet |
+| Build data | `build_data.py` | Export dashboard JSON from SQLite | ~30s | Free | — |
+| Prelims | `cli dashboard-prelims` | Sample 100 issues/SIG, pick top 3 per batch of 10 | ~15 min | ~$30 | Opus |
+| Finals | `cli dashboard-finals` | Rank ~30 finalists into top 15 per SIG | ~6 min | ~$20 | Opus |
+| Enrich | `cli dashboard-enrich` | Generate problem/workaround/fix per issue | ~5 min | ~$6 | Sonnet |
+| Rank | `cli dashboard-rank` | Rank SIGs, write executive summary | ~30s | ~$1 | Opus |
+| Build report | `cli build-roadmap` | Render triage report HTML | instant | Free | — |
+| Newsfeed | `cli generate-newsfeed` | Generate daily digest from day's issues | ~30s | ~$0.50 | Sonnet |
+| **Total** | | | **~30 min** | **~$59** | |
 
 ```bash
 # Full triage pipeline (all steps except newsfeed)
