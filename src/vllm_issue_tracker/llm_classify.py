@@ -30,34 +30,74 @@ from .prompts import (
 # ---------------------------------------------------------------------------
 
 
-async def _call_llm(settings: LLMSettings, prompt: str, max_tokens: int = 8192) -> str:
-    """Call the configured LLM provider and return the raw text response."""
+async def _call_llm(
+    settings: LLMSettings,
+    prompt: str,
+    max_tokens: int = 8192,
+    thinking_budget: int | None = None,
+    model_override: str | None = None,
+) -> str:
+    """Call the configured LLM provider and return the raw text response.
+
+    Args:
+        thinking_budget: Override settings.thinking_budget. Pass 0 to disable.
+        model_override: Use a specific model instead of settings.resolved_model.
+    """
     if settings.provider == "anthropic":
-        return await _call_anthropic(settings, prompt, max_tokens)
+        return await _call_anthropic(
+            settings, prompt, max_tokens,
+            thinking_budget=thinking_budget,
+            model_override=model_override,
+        )
     elif settings.provider == "openai":
-        return await _call_openai(settings, prompt, max_tokens)
+        return await _call_openai(settings, prompt, max_tokens, model_override=model_override)
     else:
         raise ValueError(f"Unknown LLM provider: {settings.provider}")
 
 
-async def _call_anthropic(settings: LLMSettings, prompt: str, max_tokens: int = 8192) -> str:
+async def _call_anthropic(
+    settings: LLMSettings,
+    prompt: str,
+    max_tokens: int = 8192,
+    thinking_budget: int | None = None,
+    model_override: str | None = None,
+) -> str:
     import anthropic
 
+    model = model_override or settings.resolved_model
+    budget = thinking_budget if thinking_budget is not None else settings.thinking_budget
+
     client = anthropic.AsyncAnthropic()
-    message = await client.messages.create(
-        model=settings.resolved_model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text
+    kwargs: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if budget and budget > 0:
+        kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+
+    # Use streaming to avoid timeout on large/thinking requests.
+    # With thinking enabled, we must skip thinking blocks and only collect text blocks.
+    async with client.messages.stream(**kwargs) as stream:
+        message = await stream.get_final_message()
+    for block in message.content:
+        if block.type == "text":
+            return block.text
+    return message.content[-1].text
 
 
-async def _call_openai(settings: LLMSettings, prompt: str, max_tokens: int = 8192) -> str:
+async def _call_openai(
+    settings: LLMSettings,
+    prompt: str,
+    max_tokens: int = 8192,
+    model_override: str | None = None,
+) -> str:
     import openai
 
+    model = model_override or settings.resolved_model
     client = openai.AsyncOpenAI()
     response = await client.chat.completions.create(
-        model=settings.resolved_model,
+        model=model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -103,6 +143,8 @@ async def _run_concurrent(
     prompts: list[str],
     desc: str,
     max_tokens: int = 8192,
+    thinking_budget: int | None = None,
+    model_override: str | None = None,
 ) -> list[str]:
     """Run multiple LLM calls with bounded concurrency and a progress bar."""
     semaphore = asyncio.Semaphore(settings.max_concurrent)
@@ -111,7 +153,11 @@ async def _run_concurrent(
 
     async def _task(idx: int, prompt: str) -> None:
         async with semaphore:
-            results[idx] = await _call_llm(settings, prompt, max_tokens=max_tokens)
+            results[idx] = await _call_llm(
+                settings, prompt, max_tokens=max_tokens,
+                thinking_budget=thinking_budget,
+                model_override=model_override,
+            )
             pbar.update(1)
 
     await asyncio.gather(*[_task(i, p) for i, p in enumerate(prompts)])
@@ -310,7 +356,129 @@ async def dashboard_classify_all(
 # ---------------------------------------------------------------------------
 
 # Maximum issues to send per SIG in one prompt. If a SIG has more, we batch.
-_SUMMARIZE_MAX_ISSUES = 200
+_SUMMARIZE_MAX_ISSUES = 100
+_SUMMARIZE_ACTIONABLE_TYPES = ("Bug", "Feature Request", "Usage/Question", "Other")
+_COMMENT_BODY_CSV = "data/issue_comments_body.csv"
+_COMMENT_TOKEN_BUDGET = 5000  # chars budget for comments per issue
+
+
+def _load_comment_bodies(settings: "Settings", issue_ids: set[str]) -> dict[str, list[dict]]:
+    """Load comment bodies from CSV for a set of issue_ids.
+
+    Returns {issue_id: [{"user": user_id, "body": text, "created_at": date}, ...]},
+    most recent first, trimmed to fit within _COMMENT_TOKEN_BUDGET chars per issue.
+    Also includes "last_activity" — the date of the most recent comment.
+    """
+    import csv
+    import sys
+
+    csv.field_size_limit(sys.maxsize)
+    csv_path = settings.root_dir / _COMMENT_BODY_CSV
+    if not csv_path.exists():
+        print(f"  Warning: {csv_path} not found, skipping comment context")
+        return {}
+
+    raw_comments: dict[str, list[dict]] = {}
+    with open(csv_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            iid = row.get("issue_id", "")
+            if iid not in issue_ids:
+                continue
+            body = (row.get("body") or "").strip()
+            if not body:
+                continue
+            raw_comments.setdefault(iid, []).append({
+                "user": row.get("user_id", "?"),
+                "body": body,
+                "created_at": row.get("created_at", ""),
+            })
+
+    # For each issue: sort most recent first, fill up to token budget
+    comments: dict[str, list[dict]] = {}
+    for iid, all_comments in raw_comments.items():
+        all_comments.sort(key=lambda c: c["created_at"], reverse=True)
+
+        # Track last activity date
+        last_activity = all_comments[0]["created_at"] if all_comments else ""
+
+        # Fill from most recent, respecting char budget
+        selected = []
+        chars_used = 0
+        for c in all_comments:
+            entry_len = len(c["body"]) + len(c["user"]) + 10  # overhead for formatting
+            if chars_used + entry_len > _COMMENT_TOKEN_BUDGET and selected:
+                break  # always include at least one comment
+            selected.append(c)
+            chars_used += entry_len
+
+        selected.reverse()  # restore chronological order for readability
+        # Attach last_activity to the first comment as metadata
+        if selected:
+            selected[0]["_last_activity"] = last_activity
+        comments[iid] = selected
+
+    return comments
+
+
+def _tiered_select(issues: list[dict], cap: int) -> list[dict]:
+    """Select up to `cap` issues using tiered priority sampling.
+
+    Tier 1: Reopened or high-engagement (top 10% by comments) — always include.
+    Tier 2: Created in last 30 days — fill next.
+    Tier 3: Long-running (90+ days open) with recent activity (last 30 days) — fill next.
+    Tier 4: Everything else by recency — backfill remainder.
+    """
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    thirty_days_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    ninety_days_ago = (now - timedelta(days=90)).strftime("%Y-%m-%d")
+
+    # Compute comment threshold for top 10%
+    sorted_by_comments = sorted(issues, key=lambda i: i["comments"], reverse=True)
+    top10_idx = max(1, len(issues) // 10)
+    comment_threshold = sorted_by_comments[top10_idx - 1]["comments"]
+
+    selected: list[dict] = []
+    seen: set[int] = set()
+
+    def _add(issue: dict) -> bool:
+        if issue["issue_number"] in seen or len(selected) >= cap:
+            return False
+        seen.add(issue["issue_number"])
+        selected.append(issue)
+        return True
+
+    # Tier 1: Reopened or high-engagement
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        if iss["reopens"] > 0 or iss["comments"] >= comment_threshold:
+            _add(iss)
+
+    # Tier 2: Created in last 30 days (already sorted by created_at DESC)
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        if iss["created_at"] >= thirty_days_ago:
+            _add(iss)
+
+    # Tier 3: Long-running (90+ days) with recent activity
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        if iss["created_at"] < ninety_days_ago and iss["updated_at"] >= thirty_days_ago:
+            _add(iss)
+
+    # Tier 4: Backfill by recency
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        _add(iss)
+
+    return selected
+
 
 # Current quarter roadmap issue — override with ROADMAP_ISSUE env var
 _ROADMAP_ISSUE = os.environ.get("ROADMAP_ISSUE", "32455")
@@ -440,66 +608,244 @@ def _fetch_release_notes(n: int = 5) -> str:
     )
 
 
-async def dashboard_summarize_all(
-    conn: sqlite3.Connection,
-    settings: Settings,
-    sig_filter: str | None = None,
-) -> dict:
-    """For each SIG group, cluster issues and generate one-line summaries.
+def _select_and_enrich_issues(
+    conn: sqlite3.Connection, settings: Settings, sig: str,
+) -> list[dict]:
+    """Select and enrich issues for a SIG: filter, tier, attach comments."""
+    from .prompts import format_summarize_issues_block  # noqa: F811
 
-    If sig_filter is set, only summarize that one SIG group (for testing).
-    """
-    from .prompts import (
-        DASHBOARD_SUMMARIZE_SIG,
-        format_summarize_issues_block,
-    )
+    type_placeholders = ",".join("?" * len(_SUMMARIZE_ACTIONABLE_TYPES))
+    rows = conn.execute(
+        f"""
+        SELECT issue_number, issue_id, title, body, issue_type, model_tags, hardware_tags,
+               number_of_comments, number_of_times_reopened, created_at, updated_at
+        FROM issues
+        WHERE sig_group = ? AND state = 'open'
+          AND issue_type IN ({type_placeholders})
+        ORDER BY created_at DESC
+        """,
+        (sig, *_SUMMARIZE_ACTIONABLE_TYPES),
+    ).fetchall()
 
-    llm = settings.llm
+    issues = [
+        {
+            "issue_number": row["issue_number"],
+            "issue_id": row["issue_id"] or "",
+            "title": row["title"],
+            "body": row["body"] or "",
+            "issue_type": row["issue_type"],
+            "model_tags": row["model_tags"] or "General",
+            "hardware_tags": row["hardware_tags"] or "General",
+            "comments": row["number_of_comments"] or 0,
+            "reopens": row["number_of_times_reopened"] or 0,
+            "created_at": row["created_at"] or "",
+            "updated_at": row["updated_at"] or "",
+        }
+        for row in rows
+    ]
 
-    # Build SIG name -> description lookup
-    sig_lookup = {ws["name"]: ws["description"] for ws in WORKSTREAM_THEMES}
+    if not issues:
+        return []
 
-    # Get all SIG groups that have classified issues
+    # Tiered selection
+    if len(issues) > _SUMMARIZE_MAX_ISSUES:
+        issues = _tiered_select(issues, _SUMMARIZE_MAX_ISSUES)
+        print(f"  {sig}: {len(rows)} eligible issues, sampled {len(issues)} via tiered selection")
+    else:
+        print(f"  {sig}: {len(issues)} eligible issues (all included)")
+
+    # Attach comment bodies and last activity date
+    selected_issue_ids = {iss["issue_id"] for iss in issues if iss["issue_id"]}
+    comment_map = _load_comment_bodies(settings, selected_issue_ids)
+    for iss in issues:
+        comments = comment_map.get(iss["issue_id"], [])
+        iss["comment_bodies"] = comments
+        # Extract last_activity from metadata on first comment
+        if comments and comments[0].get("_last_activity"):
+            iss["last_activity"] = comments[0]["_last_activity"][:10]
+        else:
+            iss["last_activity"] = iss.get("updated_at", "")[:10]
+
+    return issues
+
+
+def _sig_filename(sig: str) -> str:
+    """Convert SIG name to a safe filename: 'Core Engine' -> 'core_engine'."""
+    return sig.lower().replace(" ", "_").replace("/", "_")
+
+
+def _get_sig_groups(conn: sqlite3.Connection, sig_filter: str | None = None) -> list[str]:
+    """Get SIG group names, optionally filtered to one."""
     sig_rows = conn.execute(
         "SELECT DISTINCT sig_group FROM issues WHERE sig_group IS NOT NULL ORDER BY sig_group"
     ).fetchall()
     sig_groups = [row["sig_group"] for row in sig_rows]
-
     if sig_filter:
         if sig_filter not in sig_groups:
             print(f"SIG '{sig_filter}' not found. Available: {', '.join(sig_groups)}")
-            return {"sig_summaries": []}
-        sig_groups = [sig_filter]
+            return []
+        return [sig_filter]
+    return sig_groups
 
+
+# --- Step 1: Prelims ---
+
+async def dashboard_prelims(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    sig_filter: str | None = None,
+) -> dict:
+    """Prelims: send batches of 10 issues, pick top 3 from each batch.
+
+    Writes results to build/prelims_results.json.
+    """
+    from .prompts import PRELIMS_SUMMARIZE, format_summarize_issues_block
+
+    llm = settings.llm
+    sig_lookup = {ws["name"]: ws["description"] for ws in WORKSTREAM_THEMES}
+    sig_groups = _get_sig_groups(conn, sig_filter)
     if not sig_groups:
-        print("No classified issues found. Run `dashboard-classify` first.")
-        return {"sig_summaries": []}
+        return {"prelims": []}
 
-    print(f"Summarizing {len(sig_groups)} SIG group{'s' if len(sig_groups) != 1 else ''}...")
-
-    # Build prompts — one per SIG (or batched if SIG is very large)
-    prompts = []
-    prompt_sigs = []  # track which SIG each prompt belongs to
-
-    # Fetch release notes and roadmap for context (cached across SIGs)
     release_notes = _fetch_release_notes()
     full_roadmap, sig_roadmap_sections = _fetch_current_roadmap()
 
+    prompts = []
+    prompt_sigs = []
+
     for sig in sig_groups:
+        issues = _select_and_enrich_issues(conn, settings, sig)
+        if not issues:
+            continue
+
+        sig_desc = sig_lookup.get(sig, "")
+        roadmap_ctx = sig_roadmap_sections.get(sig, f"No specific roadmap section found for {sig}.")
+
+        # Batches of 10
+        batch_size = 10
+        batches = [issues[i:i + batch_size] for i in range(0, len(issues), batch_size)]
+        for batch in batches:
+            prompts.append(
+                PRELIMS_SUMMARIZE.format(
+                    sig_group=sig,
+                    sig_description=sig_desc,
+                    issue_count=len(batch),
+                    issues_block=format_summarize_issues_block(batch),
+                    release_notes=release_notes,
+                    roadmap_context=roadmap_ctx,
+                )
+            )
+            prompt_sigs.append(sig)
+
+    print(f"Prelims: {len(prompts)} batches across {len(set(prompt_sigs))} SIGs")
+
+    raw_responses = await _run_concurrent(
+        llm, prompts, desc="Prelims",
+        max_tokens=16384,
+    )
+
+    # Parse and collect top issues per SIG
+    sig_top_issues: dict[str, list[dict]] = {}
+    errors = 0
+    for sig, resp in zip(prompt_sigs, raw_responses):
+        try:
+            parsed = _parse_json_response(resp)
+        except (json.JSONDecodeError, IndexError):
+            errors += 1
+            print(f"  Warning: failed to parse prelims batch for {sig}")
+            continue
+        if isinstance(parsed, dict):
+            top = parsed.get("top_issues", [])
+            sig_top_issues.setdefault(sig, []).extend(top)
+
+    if errors:
+        print(f"Warning: {errors} prelims batches had parse errors")
+
+    # Write per-SIG files
+    prelims_dir = settings.build_dir / "prelims"
+    prelims_dir.mkdir(parents=True, exist_ok=True)
+
+    result = {"prelims": []}
+    for sig, top_issues in sig_top_issues.items():
+        seen = set()
+        deduped = []
+        for iss in top_issues:
+            if iss["number"] not in seen:
+                seen.add(iss["number"])
+                deduped.append(iss)
+        sig_data = {"sig_group": sig, "top_issues": deduped}
+        result["prelims"].append(sig_data)
+
+        sig_path = prelims_dir / f"{_sig_filename(sig)}.json"
+        sig_path.write_text(json.dumps(sig_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"  {sig}: {len(deduped)} top issues → {sig_path.name}")
+
+    print(f"Prelims written to {prelims_dir}/")
+    return result
+
+
+# --- Step 2: Finals ---
+
+async def dashboard_finals(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    sig_filter: str | None = None,
+) -> dict:
+    """Finals: take top issues from prelims, re-read with full context, rank top 15.
+
+    Reads build/prelims_results.json, writes build/dashboard_summary.json.
+    """
+    from .prompts import FINALS_RANK, format_summarize_issues_block
+
+    llm = settings.llm
+    sig_lookup = {ws["name"]: ws["description"] for ws in WORKSTREAM_THEMES}
+    prelims_dir = settings.build_dir / "prelims"
+
+    if not prelims_dir.exists():
+        print("Prelims not found. Run `dashboard-prelims` first.")
+        return {"sig_summaries": []}
+
+    # Load per-SIG prelims files
+    sig_prelims = []
+    for f in sorted(prelims_dir.glob("*.json")):
+        sig_data = json.loads(f.read_text(encoding="utf-8"))
+        sig_prelims.append(sig_data)
+
+    if sig_filter:
+        sig_prelims = [s for s in sig_prelims if s["sig_group"] == sig_filter]
+
+    if not sig_prelims:
+        print("No prelims files found." + (f" (filter: {sig_filter})" if sig_filter else ""))
+        return {"sig_summaries": []}
+
+    release_notes = _fetch_release_notes()
+    full_roadmap, sig_roadmap_sections = _fetch_current_roadmap()
+
+    prompts = []
+    prompt_sigs = []
+    issue_last_activity: dict[int, str] = {}  # issue_number -> last_activity date
+
+    for sig_data in sig_prelims:
+        sig = sig_data["sig_group"]
+        top_issue_nums = {iss["number"] for iss in sig_data.get("top_issues", [])}
+        if not top_issue_nums:
+            continue
+
+        # Fetch full issue data + comments for the top issues
+        placeholders = ",".join("?" * len(top_issue_nums))
         rows = conn.execute(
-            """
-            SELECT issue_number, title, body, issue_type, model_tags, hardware_tags,
-                   number_of_comments, number_of_times_reopened
-            FROM issues
-            WHERE sig_group = ? AND state = 'open'
-            ORDER BY created_at DESC
+            f"""
+            SELECT issue_number, issue_id, title, body, issue_type, model_tags, hardware_tags,
+                   number_of_comments, number_of_times_reopened, created_at, updated_at
+            FROM issues WHERE issue_number IN ({placeholders})
             """,
-            (sig,),
+            list(top_issue_nums),
         ).fetchall()
 
         issues = [
             {
                 "issue_number": row["issue_number"],
+                "issue_id": row["issue_id"] or "",
                 "title": row["title"],
                 "body": row["body"] or "",
                 "issue_type": row["issue_type"],
@@ -507,25 +853,32 @@ async def dashboard_summarize_all(
                 "hardware_tags": row["hardware_tags"] or "General",
                 "comments": row["number_of_comments"] or 0,
                 "reopens": row["number_of_times_reopened"] or 0,
+                "created_at": row["created_at"] or "",
+                "updated_at": row["updated_at"] or "",
             }
             for row in rows
         ]
 
-        if not issues:
-            continue
-
-        # If too many issues, take the most recent ones
-        if len(issues) > _SUMMARIZE_MAX_ISSUES:
-            print(f"  {sig}: {len(issues)} issues, sampling {_SUMMARIZE_MAX_ISSUES} most recent")
-            issues = issues[:_SUMMARIZE_MAX_ISSUES]
+        # Attach comment bodies and last activity date
+        issue_ids = {iss["issue_id"] for iss in issues if iss["issue_id"]}
+        comment_map = _load_comment_bodies(settings, issue_ids)
+        for iss in issues:
+            comments = comment_map.get(iss["issue_id"], [])
+            iss["comment_bodies"] = comments
+            if comments and comments[0].get("_last_activity"):
+                iss["last_activity"] = comments[0]["_last_activity"][:10]
+            else:
+                iss["last_activity"] = iss.get("updated_at", "")[:10]
 
         sig_desc = sig_lookup.get(sig, "")
-        # Use per-SIG roadmap section if available, else note no specific section
-        roadmap_ctx = sig_roadmap_sections.get(
-            sig, f"No specific roadmap section found for {sig}."
-        )
+        roadmap_ctx = sig_roadmap_sections.get(sig, f"No specific roadmap section found for {sig}.")
+
+        # Build lookup for last_activity per issue number
+        for iss in issues:
+            issue_last_activity[iss["issue_number"]] = iss.get("last_activity", "")
+
         prompts.append(
-            DASHBOARD_SUMMARIZE_SIG.format(
+            FINALS_RANK.format(
                 sig_group=sig,
                 sig_description=sig_desc,
                 issue_count=len(issues),
@@ -535,12 +888,18 @@ async def dashboard_summarize_all(
             )
         )
         prompt_sigs.append(sig)
+        print(f"  {sig}: {len(issues)} issues for finals ranking")
+
+    print(f"Finals: {len(prompts)} SIG prompts")
 
     raw_responses = await _run_concurrent(
-        llm, prompts, desc="Dashboard summarize"
+        llm, prompts, desc="Finals",
+        max_tokens=16384,
     )
 
-    # Parse responses
+    finals_dir = settings.build_dir / "finals"
+    finals_dir.mkdir(parents=True, exist_ok=True)
+
     sig_summaries = []
     errors = 0
     for sig, resp in zip(prompt_sigs, raw_responses):
@@ -548,40 +907,57 @@ async def dashboard_summarize_all(
             parsed = _parse_json_response(resp)
         except (json.JSONDecodeError, IndexError):
             errors += 1
-            print(f"  Warning: failed to parse response for {sig}")
+            print(f"  Warning: failed to parse finals for {sig}")
             continue
-
-        # Ensure the sig_group is set
         if isinstance(parsed, dict):
-            parsed["sig_group"] = sig
-            # Sort clusters by priority
-            clusters = parsed.get("clusters", [])
-            clusters.sort(key=lambda c: c.get("priority", 999))
-            sig_summaries.append(parsed)
+            ranked = parsed.get("ranked_issues", [])
+            ranked.sort(key=lambda c: c.get("priority", 999))
+            ranked = ranked[:15]
+
+            # Save per-SIG finals file
+            sig_data = {"sig_group": sig, "ranked_issues": ranked}
+            sig_path = finals_dir / f"{_sig_filename(sig)}.json"
+            sig_path.write_text(json.dumps(sig_data, indent=2, ensure_ascii=False), encoding="utf-8")
+            print(f"  {sig}: {len(ranked)} ranked issues → {sig_path.name}")
+
+            # Convert to clusters format for dashboard_summary.json compatibility
+            # Each ranked issue becomes a singleton cluster
+            clusters = []
+            for iss in ranked:
+                clusters.append({
+                    "main_fix": iss.get("main_fix", iss.get("summary", "")),
+                    "cluster_type": iss.get("cluster_type", "bug"),
+                    "why_pressing": iss.get("why_pressing", ""),
+                    "severity": iss.get("severity", "medium"),
+                    "regression_from": iss.get("regression_from"),
+                    "priority": iss.get("priority", 999),
+                    "last_activity": issue_last_activity.get(iss["number"], ""),
+                    "issues": [{"number": iss["number"], "summary": iss.get("summary", "")}],
+                    "categories": iss.get("categories", {}),
+                })
+            sig_summaries.append({"sig_group": sig, "clusters": clusters})
 
     if errors:
-        print(f"Warning: {errors} SIG groups had parse errors")
+        print(f"Warning: {errors} finals had parse errors")
 
+    # Write dashboard_summary.json
     result = {"sig_summaries": sig_summaries}
-
-    # Write to build/dashboard_summary.json
     output_path = settings.build_dir / "dashboard_summary.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-    print(f"Summary written to {output_path}")
-    print(f"  {len(sig_summaries)} SIG groups summarized")
-    total_clusters = sum(len(s.get("clusters", [])) for s in sig_summaries)
-    print(f"  {total_clusters} total clusters")
+    output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    print(f"Finals written to {finals_dir}/ and {output_path}")
+    total_issues = sum(len(s.get("clusters", [])) for s in sig_summaries)
+    print(f"  {len(sig_summaries)} SIGs, {total_issues} ranked issues")
     return result
 
 
 # ---------------------------------------------------------------------------
-# Dashboard prioritization (Pass 2: re-rank + enrich clusters per SIG)
+# Dashboard ranking + executive summary (reads existing summary, adds ranking)
 # ---------------------------------------------------------------------------
 
 
+# Keep _format_clusters_for_prioritize for potential future use
 def _format_clusters_for_prioritize(clusters: list[dict]) -> str:
     """Format clusters as input for the prioritization prompt."""
     parts = []
@@ -761,7 +1137,7 @@ async def dashboard_rank_and_summarize(
         sig_summaries_block=sig_summaries_block,
         roadmap_context=full_roadmap,
     )
-    rank_response = await _call_llm(llm, rank_prompt, max_tokens=4096)
+    rank_response = await _call_llm(llm, rank_prompt, max_tokens=16384)
 
     executive_summary = []
     try:
@@ -804,7 +1180,7 @@ async def dashboard_enrich_issues(
     settings: Settings,
     force: bool = False,
 ) -> dict:
-    """Generate problem/suggested_fix summaries for issues in the roadmap.
+    """Generate problem/workaround/likely_solve summaries for issues in the roadmap.
 
     Reads dashboard_summary.json to find which issue numbers appear in the
     roadmap. Fetches issue details from SQLite, sends batches to LLM,
@@ -812,7 +1188,7 @@ async def dashboard_enrich_issues(
 
     If force=False, skips issues that already have enrichments.
     """
-    from .prompts import ENRICH_ISSUES_BATCH, format_enrich_issues_block
+    from .prompts import ENRICH_SINGLE_ISSUE
 
     llm = settings.llm
     summary_path = settings.build_dir / "dashboard_summary.json"
@@ -859,69 +1235,67 @@ async def dashboard_enrich_issues(
         list(todo_nums),
     ).fetchall()
 
-    # Fetch comments for these issues
+    # Fetch comment bodies from CSV
     issue_id_rows = conn.execute(
         f"SELECT issue_number, issue_id FROM issues WHERE issue_number IN ({placeholders})",
         list(todo_nums),
     ).fetchall()
     num_to_id = {r["issue_number"]: r["issue_id"] for r in issue_id_rows}
+    id_to_num = {v: k for k, v in num_to_id.items()}
 
+    comment_map = _load_comment_bodies(settings, set(num_to_id.values()))
     comments_by_num: dict[int, list[dict]] = {}
-    try:
-        for num, iid in num_to_id.items():
-            comment_rows = conn.execute(
-                "SELECT user_id, created_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at LIMIT 5",
-                (iid,),
-            ).fetchall()
-            if comment_rows:
-                comments_by_num[num] = [{"author": r["user_id"] or "?", "body": ""} for r in comment_rows]
-    except Exception:
-        pass  # comments table may not have useful data
+    for iid, comments_list in comment_map.items():
+        num = id_to_num.get(iid)
+        if num:
+            comments_by_num[num] = [{"author": c["user"], "body": c["body"]} for c in comments_list]
 
-    # Build issue dicts for the prompt
-    issues_for_prompt = []
+    # Build one prompt per issue with full body + full comments
+    prompts = []
+    prompt_nums = []
     for row in rows:
         num = row["issue_number"]
-        issues_for_prompt.append({
-            "issue_number": num,
-            "title": row["title"] or "",
-            "body": row["body"] or "",
-            "comments": comments_by_num.get(num, []),
-        })
+        body = row["body"] or ""
+        title = row["title"] or ""
 
-    # Batch and send to LLM
-    batch_size = llm.batch_size
-    batches = [issues_for_prompt[i:i + batch_size] for i in range(0, len(issues_for_prompt), batch_size)]
+        # Format comments
+        issue_comments = comments_by_num.get(num, [])
+        if issue_comments:
+            comments_text = "\n\n".join(
+                f"@{c['author']}: {c['body']}" for c in issue_comments if c.get("body")
+            )
+        else:
+            comments_text = "(no comments)"
 
-    prompts = []
-    for batch in batches:
-        issues_block = format_enrich_issues_block(batch)
-        prompts.append(ENRICH_ISSUES_BATCH.format(
-            batch_size=len(batch),
-            issues_block=issues_block,
+        prompts.append(ENRICH_SINGLE_ISSUE.format(
+            issue_number=num,
+            title=title,
+            body=body,
+            comments=comments_text,
         ))
+        prompt_nums.append(num)
 
     raw_responses = await _run_concurrent(
-        llm, prompts, desc="Enrich issues", max_tokens=8192
+        llm, prompts, desc="Enrich issues", max_tokens=8192,
+        model_override=llm.sonnet_model, thinking_budget=0,
     )
 
     # Parse responses and merge with existing
     new_count = 0
-    for resp in raw_responses:
+    for num, resp in zip(prompt_nums, raw_responses):
         try:
             parsed = _parse_json_response(resp)
-            if isinstance(parsed, list):
-                for item in parsed:
-                    num = item.get("issue_number")
-                    if num:
-                        existing[num] = {
-                            "issue_number": num,
-                            "problem": item.get("problem", ""),
-                            "suggested_fix": item.get("suggested_fix", ""),
-                        }
-                        new_count += 1
+            if isinstance(parsed, dict):
+                existing[num] = {
+                    "issue_number": num,
+                    "short_title": parsed.get("short_title", ""),
+                    "problem": parsed.get("problem", ""),
+                    "workaround": parsed.get("workaround", "None known"),
+                    "likely_solve": parsed.get("likely_solve", ""),
+                }
+                new_count += 1
         except (json.JSONDecodeError, IndexError, KeyError) as e:
-            print(f"  Warning: failed to parse enrichment response: {e}")
+            print(f"  Warning: failed to parse enrichment for #{num}: {e}")
 
     # Write enrichments
     output = {"enrichments": list(existing.values())}
@@ -1199,20 +1573,20 @@ def run_dashboard_classify(settings: Settings, force: bool = False) -> int:
         conn.close()
 
 
-def run_dashboard_summarize(settings: Settings, sig_filter: str | None = None) -> dict:
+def run_dashboard_prelims(settings: Settings, sig_filter: str | None = None) -> dict:
     conn = sqlite3.connect(settings.sqlite_path)
     conn.row_factory = sqlite3.Row
     try:
-        return asyncio.run(dashboard_summarize_all(conn, settings, sig_filter))
+        return asyncio.run(dashboard_prelims(conn, settings, sig_filter))
     finally:
         conn.close()
 
 
-def run_dashboard_prioritize(settings: Settings, sig_filter: str | None = None) -> dict:
+def run_dashboard_finals(settings: Settings, sig_filter: str | None = None) -> dict:
     conn = sqlite3.connect(settings.sqlite_path)
     conn.row_factory = sqlite3.Row
     try:
-        return asyncio.run(dashboard_prioritize_all(conn, settings, sig_filter))
+        return asyncio.run(dashboard_finals(conn, settings, sig_filter))
     finally:
         conn.close()
 

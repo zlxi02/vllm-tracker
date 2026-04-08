@@ -45,10 +45,19 @@ load → dashboard-classify → dashboard-summarize → dashboard-rank → build
 - **Failure modes**: Regex-based only (legacy), used in dashboard filtering.
 
 ### Dashboard tabs
-- **Dashboard** — Filterable issue table (Created, PR#, Title, State, Type, HW, Model, SIG, Cmt, Author). Sort modes: New/Hot/Top/Stale/Date Range.
-- **Newsfeed** — Daily newsletter with prev/next navigation, collapsible sidebar, top-level summary bullets per day.
-- **Roadmap** — LLM-generated per-SIG report with prioritized clusters, loaded via iframe.
-- **Resources** — Release schedule, project links, community links.
+- **Dashboard** — Filterable issue table (Created, PR#, Title, State, Type, HW, Model, SIG, Age, Cmt #, Author). Sort modes: New/Hot/Top/Date Range.
+- **Newsfeed** — Daily newsletter with prev/next navigation, collapsible sidebar (defaults collapsed).
+- **Roadmap** — "Release Roadmap" showing recent/upcoming vLLM releases.
+- **Resources** — Quarterly Roadmaps (10 roadmaps, H2 2023–Q1 2026), docs, community links.
+
+### Summarization pipeline (prelims → finals → merge)
+Three-step pipeline, each independently executable via CLI with `--sig` filter:
+- **Prelims** (`dashboard-prelims`): 100 issues → 10 batches of 10, pick top 3 each → 30 issues. Full body (10K) + comments (5K).
+- **Finals** (`dashboard-finals`): 30 issues in one prompt, cluster + rank → top 15 clusters.
+- **Merge** (`dashboard-merge`): Deduplicate clusters with same root cause.
+- **Model**: Opus with extended thinking (10K budget) for all three steps. Sonnet for enrich.
+- **Issue selection**: 100 per SIG, filtered to Bug/FR/Usage/Other, tiered sampling.
+- **Comment bodies**: Loaded from `data/issue_comments_body.csv` (1.4M rows).
 
 ### Key data
 - ~14,540 issues from `data/github_issues.csv` (Hex/Databricks export)
@@ -64,8 +73,8 @@ load → dashboard-classify → dashboard-summarize → dashboard-rank → build
 
 ### Environment
 - Python >=3.9, dependencies: anthropic, openai, python-dotenv, tqdm
-- LLM config via `.env`: `LLM_PROVIDER`, `ANTHROPIC_API_KEY`
-- Default model: claude-sonnet-4-20250514
+- LLM config via `.env`: `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `LLM_THINKING_BUDGET`
+- Default model: claude-opus-4-20250514 (enrich uses Sonnet automatically)
 - CI: GitHub Actions (`ci.yml` for tests, `deploy-pages.yml` for GitHub Pages)
 
 ## 3. KEY DECISIONS
@@ -81,7 +90,9 @@ load → dashboard-classify → dashboard-summarize → dashboard-rank → build
 
 ## 4. COST
 
-- Full classify (~14.5k issues): ~$9 on Sonnet
-- Summarize + rank: ~$3.50
-- Full pipeline: ~$12.50
+- Full classify (~14.5k issues): ~$9 (Sonnet)
+- Summarize (11 SIGs): ~$48 (Opus + thinking)
+- Prioritize + rank: ~$19 (Opus + thinking)
+- Enrich: ~$3 (Sonnet)
+- Full pipeline: ~$79
 - Incremental daily refresh: ~$1-2

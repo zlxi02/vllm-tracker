@@ -44,7 +44,7 @@ def build_roadmap_report(settings: Settings) -> Path:
             if all_nums:
                 placeholders = ",".join("?" for _ in all_nums)
                 rows = conn.execute(
-                    f"SELECT issue_number, title, body, url, created_at FROM issues WHERE issue_number IN ({placeholders})",
+                    f"SELECT issue_number, title, body, url, created_at, number_of_comments FROM issues WHERE issue_number IN ({placeholders})",
                     list(all_nums),
                 ).fetchall()
                 for row in rows:
@@ -56,6 +56,7 @@ def build_roadmap_report(settings: Settings) -> Path:
                         "body_preview": body,
                         "url": row["url"] or f"{GITHUB_BASE}{row['issue_number']}",
                         "created_at": (row["created_at"] or "")[:10],
+                        "comments": row["number_of_comments"] or 0,
                     }
         finally:
             conn.close()
@@ -126,7 +127,7 @@ def render_roadmap_html(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>vLLM Issue Roadmap</title>
+  <title>vLLM Issue Triage</title>
   <style>
     :root {{
       --bg: #f8f9fa;
@@ -212,68 +213,49 @@ def render_roadmap_html(
     }}
     .cluster-table th {{
       text-align: left;
-      padding: 6px 10px;
+      padding: 8px 16px;
       border-bottom: 2px solid var(--border);
       color: var(--text-secondary);
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.3px;
+      white-space: nowrap;
     }}
     .cluster-table td {{
-      padding: 8px 10px;
+      padding: 10px 16px;
       border-bottom: 1px solid #f0f0f0;
       vertical-align: top;
     }}
     .cluster-table tr:hover td {{ background: var(--row-hover); }}
-    .cluster-table .col-rank {{ width: 36px; text-align: center; color: var(--text-secondary); }}
-    .cluster-table .col-main {{ width: 35%; }}
-    .cluster-table .col-issues {{ width: 50%; }}
-    .cluster-table .col-tags {{ width: 12%; }}
+    .cluster-table .col-rank {{ width: 3%; text-align: center; color: var(--text-secondary); font-weight: 700; }}
+    .cluster-table .col-main {{ width: 55%; }}
+    .cluster-table .col-issue {{ width: 7%; text-align: center; }}
+    .cluster-table .col-date {{ width: 10%; font-size: 12px; color: var(--text-secondary); }}
+    .cluster-table .col-cmt {{ width: 5%; text-align: center; font-size: 12px; }}
+    .cluster-table .col-tags {{ width: 20%; }}
     .main-fix {{ font-weight: 600; font-size: 13px; }}
-    .issue-link {{
-      display: block;
-      margin: 2px 0;
-      font-size: 12px;
-      line-height: 1.4;
-    }}
-    .issue-link {{
-      display: block;
-      margin: 3px 0;
-      font-size: 12px;
-      line-height: 1.4;
-      padding: 4px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.1s;
-    }}
-    .issue-link:hover {{ background: var(--primary-light); }}
-    .issue-link a {{ color: var(--primary); text-decoration: none; font-weight: 500; }}
-    .issue-link a:hover {{ text-decoration: underline; }}
-    .issue-summary {{ color: var(--text-secondary); }}
-    .issue-detail {{
-      display: none;
-      margin: 4px 0 8px;
-      padding: 10px 12px;
+    .issue-row {{ cursor: pointer; transition: background 0.1s; }}
+    .issue-row:hover td {{ background: var(--row-hover); }}
+    .issue-row.expanded td {{ background: var(--primary-light); border-bottom: none; }}
+    .detail-row td {{ padding: 0 10px 12px; background: #fbfcfd; }}
+    .detail-panel {{
+      padding: 14px 16px;
       background: #f8f9fa;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      font-size: 12px;
-      line-height: 1.5;
+      font-size: 13px;
+      line-height: 1.6;
+      border-left: 3px solid var(--primary);
     }}
-    .issue-detail.open {{ display: block; }}
-    .issue-detail-title {{ font-weight: 600; margin-bottom: 6px; }}
-    .issue-detail-body {{ color: var(--text-secondary); margin-bottom: 6px; white-space: pre-wrap; word-break: break-word; }}
-    .issue-detail-meta {{ font-size: 11px; color: var(--text-secondary); }}
-    .issue-enrichment {{ margin: 8px 0; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid var(--primary); }}
-    .issue-enrichment-item {{ font-size: 12px; line-height: 1.6; color: var(--text); margin-bottom: 4px; }}
-    .issue-enrichment-item:last-child {{ margin-bottom: 0; }}
-    .issue-enrichment-item strong {{ color: var(--text); }}
-    .issues-more {{
-      display: none;
-    }}
-    .issues-more.open {{ display: block; }}
-    .more-issues-btn, .show-more-btn {{
+    .detail-panel .detail-field {{ margin-bottom: 12px; }}
+    .detail-panel .detail-field:last-child {{ margin-bottom: 0; }}
+    .detail-panel .detail-label {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text); font-weight: 700; margin-bottom: 3px; }}
+    .detail-panel .detail-value {{ font-size: 13px; color: var(--text); line-height: 1.6; }}
+    .detail-panel .detail-value a {{ color: var(--primary); }}
+    .hidden-rows {{ display: none; }}
+    .hidden-rows.open {{ display: table-row-group; }}
+    .show-more-btn {{
       background: none;
       border: none;
       border-radius: var(--radius);
@@ -285,9 +267,7 @@ def render_roadmap_html(
       margin-top: 6px;
       transition: background 0.15s;
     }}
-    .more-issues-btn:hover, .show-more-btn:hover {{ background: rgba(0,0,0,0.05); }}
-    .hidden-rows {{ display: none; }}
-    .hidden-rows.open {{ display: table-row-group; }}
+    .show-more-btn:hover {{ background: rgba(0,0,0,0.05); }}
     a {{ color: var(--primary); text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     .footer {{ color: var(--text-secondary); font-size: 12px; margin-top: 20px; text-align: center; }}
@@ -325,23 +305,16 @@ def render_roadmap_html(
         }}
       }});
     }});
-    // Show more issues per cluster
-    document.querySelectorAll('.more-issues-btn').forEach(btn => {{
-      btn.addEventListener('click', (e) => {{
-        e.stopPropagation();
-        const target = document.getElementById(btn.dataset.target);
-        if (target) {{
-          target.classList.toggle('open');
-          btn.textContent = target.classList.contains('open') ? 'Show less' : btn.dataset.label;
+    // Issue row expand/collapse
+    document.querySelectorAll('.issue-row[data-detail]').forEach(row => {{
+      row.addEventListener('click', (e) => {{
+        if (e.target.closest('a')) return;
+        const detail = document.getElementById(row.dataset.detail);
+        if (detail) {{
+          const isOpen = detail.style.display !== 'none';
+          detail.style.display = isOpen ? 'none' : 'table-row';
+          row.classList.toggle('expanded', !isOpen);
         }}
-      }});
-    }});
-    // Issue detail expand/collapse
-    document.querySelectorAll('.issue-link[data-detail]').forEach(link => {{
-      link.addEventListener('click', (e) => {{
-        if (e.target.closest('a')) return; // let actual links work
-        const detail = document.getElementById(link.dataset.detail);
-        if (detail) detail.classList.toggle('open');
       }});
     }});
   </script>
@@ -385,7 +358,7 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
         """
         show_label = f"Show {len(hidden_clusters)} more clusters"
         hidden_html += f"""
-        <tfoot><tr><td colspan="4" style="text-align:center;padding:8px">
+        <tfoot><tr><td colspan="7" style="text-align:center;padding:8px">
           <button class="show-more-btn" data-target="{hidden_id}" data-label="{show_label}">{show_label}</button>
         </td></tr></tfoot>
         """
@@ -395,8 +368,6 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
       <div class="sig-header">
         <span class="sig-chevron">&#9662;</span>
         <h2 style="font-weight:800;">#{rank} {html.escape(sig_group)}</h2>
-        <span class="pill">{total_issues} issues</span>
-        <span class="pill">{len(clusters)} clusters</span>
       </div>
       {'<p class="meta" style="margin:4px 0 0 24px;">' + html.escape(rationale) + '</p>' if rationale else ''}
       <div class="sig-body">
@@ -405,7 +376,10 @@ def _render_roadmap_sig(sig_data: dict, idx: int, issue_details: dict[int, dict]
             <tr>
               <th class="col-rank">#</th>
               <th class="col-main">Problem</th>
-              <th class="col-issues">Related Issues</th>
+              <th class="col-issue">Issue</th>
+              <th class="col-date">Created</th>
+              <th class="col-date">Activity</th>
+              <th class="col-cmt">Cmt</th>
               <th class="col-tags">Tags</th>
             </tr>
           </thead>
@@ -423,95 +397,71 @@ def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[in
     global _cluster_id_counter
     _cluster_id_counter += 1
     cid = f"cl-{_cluster_id_counter}"
-    if enrichments is None:
-        enrichments = {}
 
     main_fix = html.escape(cluster.get("main_fix", ""))
+    why_pressing = html.escape(cluster.get("why_pressing", ""))
+    regression = cluster.get("regression_from")
     issues = cluster.get("issues", [])
     categories = cluster.get("categories", {})
-    visible_issue_limit = 2
 
-    visible_issues = issues[:visible_issue_limit]
-    hidden_issues = issues[visible_issue_limit:]
+    # Get issue number and DB details
+    issue_num = issues[0].get("number", 0) if issues else 0
+    details = issue_details.get(issue_num, {})
+    enrichment = enrichments.get(issue_num, {}) if enrichments else {}
+    url = details.get("url", f"{GITHUB_BASE}{issue_num}")
+    created = details.get("created_at", "")
+    last_activity = cluster.get("last_activity", "")
+    comments = details.get("comments", 0)
 
-    def _render_issue_item(iss: dict, detail_id: str) -> str:
-        num = iss.get("number", 0)
-        summary = html.escape(iss.get("summary", ""))
-        details = issue_details.get(num, {})
-        enrichment = enrichments.get(num, {})
-        url = details.get("url", f"{GITHUB_BASE}{num}")
-        title = html.escape(details.get("title", ""))
-        body_preview = html.escape(details.get("body_preview", ""))
-        created = details.get("created_at", "")
-        problem = html.escape(enrichment.get("problem", ""))
-        suggested_fix = html.escape(enrichment.get("suggested_fix", ""))
+    # Use short_title from enrichment if available, fall back to main_fix
+    display_title = html.escape(enrichment.get("short_title", "")) or main_fix
 
-        detail_html = ""
-        if title or body_preview or problem:
-            enrichment_html = ""
-            if problem:
-                enrichment_html = f"""
-                <div class="issue-enrichment">
-                  <div class="issue-enrichment-item"><strong>Problem:</strong> {problem}</div>
-                  <div class="issue-enrichment-item"><strong>Suggested Fix:</strong> {suggested_fix}</div>
-                </div>"""
-
-            detail_html = f"""
-            <div class="issue-detail" id="{detail_id}">
-              <div class="issue-detail-title">{title}</div>
-              {enrichment_html}
-              {'<div class="issue-detail-body">' + body_preview + '</div>' if body_preview and not problem else ''}
-              <div class="issue-detail-meta">
-                {'Created: ' + created + ' &middot; ' if created else ''}
-                <a href="{html.escape(url)}" target="_blank">View on GitHub &rarr;</a>
-              </div>
-            </div>"""
-
-        return f"""
-        <span class="issue-link" data-detail="{detail_id}">
-          <a href="{html.escape(url)}" target="_blank" onclick="event.stopPropagation()">#{num}</a>
-          <span class="issue-summary">{summary}</span>
-        </span>
-        {detail_html}"""
-
-    visible_html = "\n".join(
-        _render_issue_item(iss, f"{cid}-d{i}")
-        for i, iss in enumerate(visible_issues)
-    )
-
-    hidden_html = ""
-    if hidden_issues:
-        more_id = f"{cid}-more"
-        hidden_items = "\n".join(
-            _render_issue_item(iss, f"{cid}-d{i + visible_issue_limit}")
-            for i, iss in enumerate(hidden_issues)
-        )
-        show_label = f"+{len(hidden_issues)} more"
-        hidden_html = f"""
-        <div id="{more_id}" class="issues-more">{hidden_items}</div>
-        <button class="more-issues-btn" data-target="{more_id}" data-label="{show_label}">{show_label}</button>
-        """
-
-    issues_cell = f"{visible_html}{hidden_html}"
-
-    # Render category tags
+    # Tags
     pills = []
-    itype = categories.get("type", "")
-    if itype:
-        pills.append(f'<span class="tag tag-type">{html.escape(itype)}</span>')
-    for m in categories.get("models", [])[:3]:
+    for m in categories.get("models", [])[:2]:
         if m and m != "General":
             pills.append(f'<span class="tag tag-model">{html.escape(m)}</span>')
-    for h in categories.get("hardware", [])[:3]:
+    for h in categories.get("hardware", [])[:2]:
         if h and h != "General":
             pills.append(f'<span class="tag tag-hw">{html.escape(h)}</span>')
     tags_html = "\n".join(pills)
 
+    # Expandable detail row
+    # why_pressing comes from finals; problem/workaround/likely_solve come from enrich step
+    enrichment = enrichments.get(issue_num, {}) if enrichments else {}
+    problem_text = html.escape(enrichment.get("problem", ""))
+    workaround = html.escape(enrichment.get("workaround", ""))
+    likely_solve = html.escape(enrichment.get("likely_solve", ""))
+
+    detail_fields = []
+    if problem_text:
+        detail_fields.append(f'<div class="detail-field"><div class="detail-label">Problem</div><div class="detail-value">{problem_text}</div></div>')
+    if why_pressing:
+        detail_fields.append(f'<div class="detail-field"><div class="detail-label">Why This Matters Now</div><div class="detail-value">{why_pressing}</div></div>')
+    if workaround and workaround.lower() != "none known":
+        detail_fields.append(f'<div class="detail-field"><div class="detail-label">Workaround</div><div class="detail-value">{workaround}</div></div>')
+    if likely_solve:
+        detail_fields.append(f'<div class="detail-field"><div class="detail-label">Likely Solve</div><div class="detail-value">{likely_solve}</div></div>')
+    if regression:
+        detail_fields.append(f'<div class="detail-field"><div class="detail-label">Regression From</div><div class="detail-value">{html.escape(regression)}</div></div>')
+    detail_fields.append(f'<div class="detail-field"><div class="detail-value"><a href="{html.escape(url)}" target="_blank">View on GitHub &rarr;</a></div></div>')
+
+    detail_html = "\n".join(detail_fields)
+
     return f"""
-    <tr>
+    <tr class="issue-row" data-detail="{cid}-detail">
       <td class="col-rank">{rank}</td>
-      <td class="col-main"><span class="main-fix">{main_fix}</span></td>
-      <td class="col-issues">{issues_cell}</td>
+      <td class="col-main"><span class="main-fix">{display_title}</span></td>
+      <td class="col-issue"><a href="{html.escape(url)}" target="_blank" onclick="event.stopPropagation()">#{issue_num}</a></td>
+      <td class="col-date">{created}</td>
+      <td class="col-date">{last_activity}</td>
+      <td class="col-cmt">{comments if comments else ""}</td>
       <td class="col-tags">{tags_html}</td>
+    </tr>
+    <tr class="detail-row" id="{cid}-detail" style="display:none;">
+      <td></td>
+      <td colspan="5">
+        <div class="detail-panel">{detail_html}</div>
+      </td>
     </tr>
     """

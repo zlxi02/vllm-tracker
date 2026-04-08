@@ -147,13 +147,13 @@ Issues:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard summarization — per-SIG roadmap-style summary
+# Dashboard summarization — three-step pipeline: prelims → finals → merge
 # ---------------------------------------------------------------------------
 
-DASHBOARD_SUMMARIZE_SIG = """\
-You are producing a roadmap-style summary of OPEN issues for one SIG \
-(Special Interest Group) from the vLLM project. These are unresolved \
-problems and requests that need attention.
+PRELIMS_SUMMARIZE = """\
+You are triaging OPEN issues for one SIG (Special Interest Group) from \
+the vLLM project. You will receive a small batch of issues with full \
+body text and comment threads. Read each issue deeply.
 
 SIG Group: {sig_group}
 SIG Description: {sig_description}
@@ -161,91 +161,44 @@ SIG Description: {sig_description}
 CONTEXT — CURRENT QUARTER ROADMAP OBJECTIVES FOR THIS SIG:
 {roadmap_context}
 
-Use the roadmap objectives above to understand what the team is actively \
-working on. When clustering issues:
-- Flag issues that are BLOCKING a roadmap objective.
-- Note when a cluster of issues aligns with (or undermines) a planned \
-milestone — e.g. "blocks model runner V2 default rollout" or "regression \
-in feature shipped for Elastic EP beta".
-- Issues unrelated to the roadmap are still important — don't ignore them.
-
 CONTEXT — RECENT vLLM RELEASES (what has already shipped):
 {release_notes}
 
-Use these releases to understand what was recently shipped. If an open \
-issue is about something that was supposedly fixed in a release, it may \
-be a regression or incomplete fix — flag that in your summary.
-
-SPECIFICITY GUIDE — match this level of detail in your cluster names:
-
-GOOD (specific failure + component + trigger condition):
-  - "CUDA error 803: system has unsupported display driver/CUDA driver \
-combination on hosts with older drivers"
-  - "Blackwell RTX 50-series (SM120/SM121) support missing in prebuilt \
-wheels and Docker images"
-  - "FP8 MLA attention + KV cache produces garbled output and CUDA \
-graph failures"
-  - "MTP speculative decoding crashes with encoder cache misses under \
-high concurrency for multimodal models"
-
-BAD (vague category labels that don't tell an engineer what to investigate):
-  - "Critical GPU memory access violations and OOMs under high load \
-across all architectures"
-  - "Weight loading performance regression and memory issues"
-  - "CPU offloading failures and memory management bugs"
-  - "Tool calling parser failures and crashes across multiple models \
-(Gemma4, Qwen3.5, GLM, DeepSeek, Kimi)"
-  - "Reasoning content parsing and streaming issues across reasoning \
-models (Qwen3.5, Gemma4, GPT-OSS, MiniMax)"
-  - "Structured output and guided decoding failures with JSON schema, \
-grammar, and reasoning modes"
-
-The BAD examples bundle too many distinct root causes under one label. \
-Split them: "Gemma 4 tool calling parser returns empty content on \
-streaming" is one cluster; "DeepSeek v3.2 tool calling drops arguments \
-in multi-tool responses" is a different cluster. An engineer reading \
-the cluster name alone should know exactly what to investigate.
+You have detailed issue bodies (up to 10,000 chars) AND comment thread \
+excerpts (up to 5,000 chars) for each issue. The comments often contain \
+root cause analysis, workarounds, and diagnostic findings. READ THEM \
+CAREFULLY — the comment thread is often more informative than the body.
 
 YOUR TASK:
-1. Group related OPEN issues into clusters — issues about the same \
-underlying problem or feature request belong together.
-2. For each cluster, write:
-   - main_fix: A specific, actionable description of the problem or \
-request. Include the affected model, hardware, or component.
-   - priority: Integer rank (1 = most important). Rank by severity, \
-user count, and recency.
-   - issues: Related issue numbers with a one-line summary each.
-   - categories: Dominant issue_type, models, hardware.
-3. Order clusters by priority (most important first).
+From the {issue_count} issues below, select the TOP 3 most pressing \
+issues. "Most pressing" means:
+  - Crashes, data corruption, or blocks a roadmap objective (highest)
+  - Regressions from a recent release (high)
+  - High comment count or reopens = many users affected (high)
+  - Wrong output or significant perf regression (medium)
+  - Feature requests that many users want (lower)
 
-Rules:
-- Target 5-20 clusters depending on issue count.
-- Each issue must appear in exactly one cluster.
-- Singleton clusters are fine for severe or unique issues.
-- Bugs should be grouped specifically by failure mode + component.
-- Feature requests can be grouped more broadly by theme.
-- Note if a cluster appears to be a regression from a recent release.
-- Do NOT bundle unrelated root causes under one vague label.
-
-Below are {issue_count} OPEN issues in "{sig_group}". Each line:
-  ISSUE <number> [type: <type>] [models: <models>] [hw: <hw>] | <title> | <body>
+For each selected issue, write:
+  - number: The issue number
+  - summary: One-line description of the problem
+  - why_pressing: 1-2 sentences explaining why this is urgent
+  - cluster_type: "bug", "feature_request", "usage", or "other"
+  - severity: "critical" | "high" | "medium" | "low"
+  - regression_from: Release version this regressed from, or null
+  - categories: Dominant type, models, hardware
 
 Return JSON only — no markdown fences, no commentary:
 {{
   "sig_group": "{sig_group}",
-  "clusters": [
+  "top_issues": [
     {{
-      "main_fix": "Gemma 4 FP8 dynamic quantization produces gibberish — likely v0.19.0 regression",
-      "priority": 1,
-      "issues": [
-        {{"number": 39049, "summary": "FP8 quantization on Gemma 4 outputs nonsensical text on H100"}},
-        {{"number": 39037, "summary": "Gemma 4 31B-AWQ hangs with 0 running / 4 waiting"}}
-      ],
-      "categories": {{
-        "type": "Bug",
-        "models": ["Gemma"],
-        "hardware": ["H100"]
-      }}
+      "number": 37729,
+      "summary": "V1 engine deadlocks with fp8 + prefix caching under concurrent load",
+      "why_pressing": "Zero throughput with healthy endpoint, no recovery. 15 comments, confirmed on H100 and Blackwell.",
+      "cluster_type": "bug",
+      "severity": "critical",
+      "regression_from": null,
+      "categories": {{"type": "Bug", "models": ["Qwen"], "hardware": ["H100"]}}
     }}
   ]
 }}
@@ -255,68 +208,89 @@ Issues:
 """
 
 
-PRIORITIZE_SIG_CLUSTERS = """\
-You are re-prioritizing and enriching issue clusters for one SIG \
-(Special Interest Group) from the vLLM project. You will receive \
-clusters that were generated by a previous pass. Your job is to \
-re-rank them using strategic context and add enrichment fields.
+FINALS_RANK = """\
+You are producing the final ranked list of the most pressing open issues \
+for one SIG (Special Interest Group) from the vLLM project.
 
 SIG Group: {sig_group}
+SIG Description: {sig_description}
 
-CURRENT QUARTER ROADMAP OBJECTIVES FOR THIS SIG:
+CONTEXT — CURRENT QUARTER ROADMAP OBJECTIVES FOR THIS SIG:
 {roadmap_context}
 
-RECENT RELEASES (what has already shipped):
+CONTEXT — RECENT vLLM RELEASES (what has already shipped):
 {release_notes}
 
-CLUSTERS TO RE-PRIORITIZE:
-{clusters_block}
+Below are {issue_count} issues that were identified as the most pressing \
+across multiple preliminary rounds. You have full issue bodies and comment \
+threads for each.
 
 YOUR TASK:
-1. RE-RANK clusters by strategic priority. Weight these factors:
-   - Does this cluster BLOCK a roadmap objective? (highest weight)
-   - Is this a REGRESSION from a recent release? (high weight)
-   - Comment count and reopen count across issues (user pain signal)
-   - Number of affected issues in the cluster
-   - Severity of impact (crashes > wrong output > perf regression > UX)
+Read each issue deeply — use the body AND comments to understand the \
+actual root cause. Then rank ALL {issue_count} issues from most pressing \
+to least pressing. Do NOT group or cluster — each issue is its own entry. \
+Return the top 15.
 
-2. ENRICH each cluster with these new fields:
-   - severity: "critical" | "high" | "medium" | "low"
-     critical = crashes, data corruption, blocks major feature
-     high = wrong output, significant perf regression, blocks users
-     medium = workarounds exist, affects subset of users
-     low = cosmetic, edge case, nice-to-have fix
-   - roadmap_impact: Which roadmap objective this blocks or undermines, \
-or null if unrelated. Be specific: "Blocks MRV2 default rollout" not \
-just "Related to Core Engine".
-   - regression_from: Release version this regressed from (e.g. "v0.19.0"), \
-or null if not a regression.
+For each issue, write:
+  - number: Issue number
+  - summary: One-line description of the problem
+  - main_fix: Specific actionable description of what needs to be fixed. \
+An engineer reading just this should know what code to investigate.
+  - why_pressing: 1-2 sentences explaining why this issue matters RIGHT \
+NOW. Combine: how long open + activity level, whether it's a regression, \
+what it blocks, how many users are affected. This is editorial judgment — \
+make it compelling and specific.
+  - cluster_type: "bug", "feature_request", "usage", or "other"
+  - regression_from: Release version this regressed from, or null
+  - priority: Integer rank (1 = most pressing)
+  - categories: Dominant type, models, hardware
 
-3. SORT issues within each cluster by engagement (most comments first).
+RANKING PRIORITY (most to least pressing):
+1. Critical bugs blocking roadmap objectives or causing crashes
+2. Regressions from recent releases
+3. High-engagement bugs (many comments, reopens)
+4. Bugs producing wrong output
+5. Performance regressions
+6. High-demand feature requests
+7. Usage/configuration issues
+
+SPECIFICITY GUIDE for main_fix:
+  GOOD: "V1 scheduler hard-asserts on token count > max_model_len during \
+streaming, killing EngineCore instead of finishing with length"
+  GOOD: "CUDA graph deadlock under concurrent load with prefix caching — \
+forward pass hangs permanently, GPU at 100% but 0 tokens/s"
+  BAD: "Engine crashes under concurrent load"
+  BAD: "KV cache memory leaks and improper cleanup"
+
+SPECIFICITY GUIDE for why_pressing:
+  GOOD: "Filed 18 days ago with 15 comments. Confirmed on H100 and \
+Blackwell by multiple users. Blocks production deployment of prefix \
+caching — the workaround (--enforce-eager) has 8x throughput penalty."
+  GOOD: "Regression from v0.19.0 — broke MTP speculative decoding for \
+Qwen3.5 models. 4 comments in first week. No workaround except pinning \
+to v0.18.1."
+  BAD: "This is a critical bug."
+  BAD: "Many users are affected."
+
+Below are {issue_count} issues with full context:
+{issues_block}
 
 Return JSON only — no markdown fences, no commentary:
 {{
   "sig_group": "{sig_group}",
-  "clusters": [
+  "ranked_issues": [
     {{
-      "main_fix": "original cluster name (do not change)",
+      "number": 37729,
+      "summary": "V1 engine core deadlocks under concurrent load (fp8 + prefix caching + Qwen3.5)",
+      "main_fix": "CUDA graph deadlock in V1 scheduler under sustained concurrent load — forward pass hangs permanently at 0 tokens/s",
+      "why_pressing": "Filed 18 days ago with 15 comments. Confirmed on H100 and Blackwell. Blocks production prefix caching — workaround (--enforce-eager) has 8x throughput penalty.",
+      "cluster_type": "bug",
+      "regression_from": null,
       "priority": 1,
-      "severity": "critical",
-      "roadmap_impact": "Blocks MRV2 default rollout — V2 engine crashes under concurrent load",
-      "regression_from": "v0.19.0",
-      "issues": [
-        {{"number": 37729, "summary": "original summary (do not change)", "comments": 15, "reopens": 2}}
-      ],
       "categories": {{"type": "Bug", "models": ["Qwen"], "hardware": ["H100"]}}
     }}
   ]
 }}
-
-IMPORTANT:
-- Do NOT merge, split, rename, or remove clusters. Keep the exact same \
-cluster names and issue assignments. You are ONLY re-ranking and adding fields.
-- Every cluster from the input must appear in the output.
-- The priority field should be re-assigned (1 = most important).
 """
 
 
@@ -380,21 +354,44 @@ def format_summarize_issues_block(issues: list[dict]) -> str:
     """Format issues for the per-SIG summarization prompt.
 
     Each dict should have: issue_number, title, body, issue_type, model_tags, hardware_tags.
-    Optionally: comments, reopens for engagement signal.
+    Optionally: comments (count), reopens, comment_bodies (list of dicts with user/body).
+    Body is truncated to 10,000 chars; comment text gets up to 5,000 chars.
     """
     lines = []
     for issue in issues:
         number = issue["issue_number"]
         title = issue.get("title", "").replace("\n", " ").strip()
-        body = issue.get("body", "").replace("\n", " ").strip()[:200]
+        body = issue.get("body", "").replace("\n", " ").strip()[:10000]
         itype = issue.get("issue_type") or "Other"
         models = issue.get("model_tags") or "General"
         hardware = issue.get("hardware_tags") or "General"
         comments = issue.get("comments", 0)
         reopens = issue.get("reopens", 0)
+
+        # Format comment bodies (up to 3,000 chars total)
+        comment_bodies = issue.get("comment_bodies", [])
+        comment_text = ""
+        if comment_bodies:
+            parts = []
+            chars_left = 5000
+            for cb in comment_bodies:
+                user = cb.get("user", "?")
+                cbody = cb.get("body", "").replace("\n", " ").strip()
+                if not cbody:
+                    continue
+                entry = f"@{user}: {cbody}"
+                if len(entry) > chars_left:
+                    entry = entry[:chars_left]
+                parts.append(entry)
+                chars_left -= len(entry)
+                if chars_left <= 0:
+                    break
+            if parts:
+                comment_text = " | COMMENTS: " + " || ".join(parts)
+
         lines.append(
             f"ISSUE {number} [type: {itype}] [comments: {comments}] [reopens: {reopens}] "
-            f"[models: {models}] [hw: {hardware}] | {title} | {body}"
+            f"[models: {models}] [hw: {hardware}] | {title} | {body}{comment_text}"
         )
     return "\n".join(lines)
 
@@ -521,35 +518,60 @@ def format_newsfeed_issues_block(issues: list[dict]) -> str:
 # Issue enrichment — per-issue problem/fix summaries
 # ---------------------------------------------------------------------------
 
-ENRICH_ISSUES_BATCH = """\
-You are summarizing GitHub issues from the vLLM project for an engineering \
-roadmap report. For each issue, write a concise two-part summary.
+ENRICH_SINGLE_ISSUE = """\
+You are writing a detailed summary of a single GitHub issue from the vLLM \
+project for an engineering roadmap report. You have the FULL issue body \
+and ALL comments.
 
-**problem**: 1-3 sentences. What is happening? Be specific about the error, \
-affected model, hardware, and vLLM version. Translate non-English content \
-to English.
+Read everything carefully — the comments often contain root cause analysis, \
+workarounds, and diagnostic findings that aren't in the original body.
 
-**suggested_fix**: 1-3 sentences. Based on the issue details and comments, \
-what is the likely root cause and what should be investigated? If no fix is \
-obvious, suggest debugging steps.
+Write four fields:
 
-Be direct and technical. An engineer should read the summary and immediately \
-understand what's broken and where to start looking.
+**short_title**: A concise, scannable title (under 80 chars). Lead with \
+the symptom, include key trigger conditions, drop implementation details. \
+Examples:
+  GOOD: "V1 engine deadlocks at 0 tokens/s under concurrent FP8 + prefix caching load"
+  GOOD: "v0.19.0 regression: page size check breaks MTP spec decoding for Qwen3.5-FP8"
+  GOOD: "FlashInfer 0.4 produces wrong outputs on hybrid attention models after 2nd turn"
+  GOOD: "LMCache CPU offload generates wrong/repetitive output under high concurrency"
+  GOOD: "Prefix caching returns different outputs for identical temperature=0 requests"
+  BAD: "V1 scheduler CUDA graph synchronization deadlock when async scheduling + prefix caching + FP8 are enabled - forward pass permanently hangs at 0 tokens/s with 11+ concurrent requests"
+  BAD: "KV cache page size calculation changed between v0.18.1 and v0.19.0, now fails divisibility check for Qwen3.5-27B-FP8 with MTP speculative decoding"
 
-Below are {batch_size} issues. Each has the format:
-  ISSUE <number> | <title> | <body excerpt> | COMMENTS: <comment excerpts>
+**problem**: 2-4 sentences. What is broken and how does it manifest? Be \
+specific about the error message, stack trace, affected model/hardware, \
+vLLM version, and trigger condition. Translate non-English content to English.
+
+**workaround**: If the comments mention a workaround, state it concisely \
+(e.g. "Use --enforce-eager (8x throughput penalty)" or "Downgrade to \
+v0.18.1"). If no workaround exists, write "None known".
+
+**likely_solve**: 2-4 sentences. Where should an engineer look to fix this? \
+Name the specific file, function, or code path if identifiable from the \
+body/comments. Describe what the fix would look like. If the root cause is \
+unclear, suggest what to investigate and how.
+
+Be direct and technical. An engineer should read these four fields and \
+immediately understand: what it is, what's broken, what to tell users, and \
+where to start fixing it.
+
+ISSUE #{issue_number}: {title}
+
+BODY:
+{body}
+
+COMMENTS:
+{comments}
 
 Return JSON only — no markdown fences, no commentary:
-[
-  {{
-    "issue_number": 1234,
-    "problem": "...",
-    "suggested_fix": "..."
-  }}
-]
-
-Issues:
-{issues_block}
+{{
+  "issue_number": {issue_number},
+  "short_title": "V1 engine deadlocks at 0 tokens/s under concurrent FP8 + prefix caching load",
+  "problem": "...",
+  "workaround": "...",
+  "likely_solve": "..."
+}}
 """
 
 
@@ -563,13 +585,13 @@ def format_enrich_issues_block(issues: list[dict]) -> str:
     for issue in issues:
         number = issue["issue_number"]
         title = issue.get("title", "").replace("\n", " ").strip()
-        body = issue.get("body", "").replace("\n", " ").strip()[:1000]
+        body = issue.get("body", "").replace("\n", " ").strip()[:10000]
         comments_raw = issue.get("comments", [])
         if comments_raw:
             comment_strs = []
             for c in comments_raw[:5]:
                 cauthor = c.get("author", "?")
-                cbody = c.get("body", "").replace("\n", " ").strip()[:300]
+                cbody = c.get("body", "").replace("\n", " ").strip()[:1000]
                 comment_strs.append(f"@{cauthor}: {cbody}")
             comments_text = " | ".join(comment_strs)
         else:

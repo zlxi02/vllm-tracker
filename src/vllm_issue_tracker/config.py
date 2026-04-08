@@ -11,14 +11,20 @@ class LLMSettings:
     model: str = ""  # empty = use provider default
     batch_size: int = 50  # issues per LLM classification call
     max_concurrent: int = 5  # max parallel LLM calls
+    thinking_budget: int = 10000  # tokens for extended thinking (0 = disabled)
 
     @property
     def resolved_model(self) -> str:
         if self.model:
             return self.model
         if self.provider == "anthropic":
-            return "claude-sonnet-4-20250514"
+            return "claude-opus-4-20250514"
         return "gpt-4o"
+
+    @property
+    def sonnet_model(self) -> str:
+        """Return the Sonnet model ID for lightweight tasks."""
+        return "claude-sonnet-4-20250514"
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,7 @@ def get_settings(root_dir: Path | None = None) -> Settings:
         model=os.environ.get("LLM_MODEL", ""),
         batch_size=int(os.environ.get("LLM_BATCH_SIZE", "50")),
         max_concurrent=int(os.environ.get("LLM_MAX_CONCURRENT", "5")),
+        thinking_budget=int(os.environ.get("LLM_THINKING_BUDGET", "10000")),
     )
 
     return Settings(

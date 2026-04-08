@@ -115,26 +115,26 @@ def command_dashboard_classify(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_dashboard_summarize(args: argparse.Namespace) -> int:
+def command_dashboard_prelims(args: argparse.Namespace) -> int:
     _load_dotenv()
     settings = get_settings()
     if not settings.sqlite_path.exists():
         print("Database not found. Run `load` first.")
         return 1
-    from .llm_classify import run_dashboard_summarize
-    run_dashboard_summarize(settings, sig_filter=args.sig)
+    from .llm_classify import run_dashboard_prelims
+    run_dashboard_prelims(settings, sig_filter=args.sig)
     return 0
 
 
-def command_dashboard_prioritize(args: argparse.Namespace) -> int:
+def command_dashboard_finals(args: argparse.Namespace) -> int:
     _load_dotenv()
     settings = get_settings()
-    summary_path = settings.build_dir / "dashboard_summary.json"
-    if not summary_path.exists():
-        print("Summary not found. Run `dashboard-summarize` first.")
+    prelims_dir = settings.build_dir / "prelims"
+    if not prelims_dir.exists() or not list(prelims_dir.glob("*.json")):
+        print("Prelims not found. Run `dashboard-prelims` first.")
         return 1
-    from .llm_classify import run_dashboard_prioritize
-    run_dashboard_prioritize(settings, sig_filter=args.sig)
+    from .llm_classify import run_dashboard_finals
+    run_dashboard_finals(settings, sig_filter=args.sig)
     return 0
 
 
@@ -146,7 +146,7 @@ def command_dashboard_rank(args: argparse.Namespace) -> int:
         return 1
     summary_path = settings.build_dir / "dashboard_summary.json"
     if not summary_path.exists():
-        print("Summary not found. Run `dashboard-summarize` first.")
+        print("Summary not found. Run `dashboard-finals` first.")
         return 1
     from .llm_classify import run_dashboard_rank
     run_dashboard_rank(settings)
@@ -161,7 +161,7 @@ def command_dashboard_enrich(args: argparse.Namespace) -> int:
         return 1
     summary_path = settings.build_dir / "dashboard_summary.json"
     if not summary_path.exists():
-        print("Summary not found. Run `dashboard-summarize` first.")
+        print("Summary not found. Run `dashboard-finals` first.")
         return 1
     from .llm_classify import run_dashboard_enrich
     run_dashboard_enrich(settings, force=args.force)
@@ -284,17 +284,17 @@ def command_refresh(args: argparse.Namespace) -> int:
     from .llm_classify import run_dashboard_classify
     run_dashboard_classify(settings, force=False)
 
-    # Step 3: Summarize (cluster issues per SIG)
+    # Step 3: Prelims (batch issues, pick top 3 per batch)
     print("=" * 60)
-    print("Step 3/6: Summarizing SIGs...")
-    from .llm_classify import run_dashboard_summarize
-    run_dashboard_summarize(settings)
+    print("Step 3/6: Prelims — selecting top issues per batch...")
+    from .llm_classify import run_dashboard_prelims
+    run_dashboard_prelims(settings)
 
-    # Step 4: Prioritize (enrich clusters with roadmap/release context)
+    # Step 4: Finals (rank top issues with full context, write summary)
     print("=" * 60)
-    print("Step 4/6: Prioritizing clusters...")
-    from .llm_classify import run_dashboard_prioritize
-    run_dashboard_prioritize(settings)
+    print("Step 4/6: Finals — ranking top issues...")
+    from .llm_classify import run_dashboard_finals
+    run_dashboard_finals(settings)
 
     # Step 5: Rank (executive summary + SIG ranking)
     print("=" * 60)
@@ -319,7 +319,7 @@ def command_refresh(args: argparse.Namespace) -> int:
 def command_build_roadmap() -> int:
     settings = get_settings()
     if not settings.summary_path.exists():
-        print("Summary not found. Run `dashboard-summarize` first.")
+        print("Summary not found. Run `dashboard-finals` first.")
         return 1
     path = build_roadmap_report(settings)
     print(f"Roadmap report written to {path}")
@@ -362,21 +362,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Re-classify already-classified issues"
     )
 
-    sum_parser = subparsers.add_parser(
-        "dashboard-summarize",
-        help="Generate per-SIG roadmap summaries from classified issues",
+    prelims_parser = subparsers.add_parser(
+        "dashboard-prelims",
+        help="Prelims: batch issues into groups of 10, pick top 3 per batch",
     )
-    sum_parser.add_argument(
+    prelims_parser.add_argument(
         "--sig", type=str, default=None,
-        help="Summarize only this SIG group (e.g. 'Core Engine')",
+        help="Run prelims for only this SIG group (e.g. 'Core Engine')",
     )
-    pri_parser = subparsers.add_parser(
-        "dashboard-prioritize",
-        help="Pass 2: Re-rank and enrich clusters with severity/roadmap impact/regression flags",
+    finals_parser = subparsers.add_parser(
+        "dashboard-finals",
+        help="Finals: rank top issues from prelims with full context, produce top 15 clusters",
     )
-    pri_parser.add_argument(
+    finals_parser.add_argument(
         "--sig", type=str, default=None,
-        help="Prioritize only this SIG group (e.g. 'Core Engine')",
+        help="Run finals for only this SIG group (e.g. 'Core Engine')",
     )
     subparsers.add_parser(
         "dashboard-rank",
@@ -419,8 +419,8 @@ def main(argv: list[str] | None = None) -> int:
         "quality-check": lambda: command_quality_check(),
         "refresh": lambda: command_refresh(args),
         "dashboard-classify": lambda: command_dashboard_classify(args),
-        "dashboard-summarize": lambda: command_dashboard_summarize(args),
-        "dashboard-prioritize": lambda: command_dashboard_prioritize(args),
+        "dashboard-prelims": lambda: command_dashboard_prelims(args),
+        "dashboard-finals": lambda: command_dashboard_finals(args),
         "dashboard-rank": lambda: command_dashboard_rank(args),
         "dashboard-enrich": lambda: command_dashboard_enrich(args),
         "build-roadmap": lambda: command_build_roadmap(),

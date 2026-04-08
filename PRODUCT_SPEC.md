@@ -108,30 +108,53 @@ The pipeline is designed for daily refreshes:
 ## Dashboard
 
 ### Tabs
-- **Dashboard** — Filterable table: Created, PR#, Title, State, Type, HW, Model, SIG, Cmt, Author. Sort modes: New/Hot/Top/Stale/Date Range.
-- **Newsfeed** — Daily newsletters with summary bullets, issue breakdowns, prev/next navigation, collapsible sidebar.
-- **Roadmap** — Per-SIG prioritized report loaded via iframe.
-- **Resources** — Release schedule, project links, community links.
+- **Dashboard** — Filterable table: Created, PR#, Title, State, Type, HW, Model, SIG, Age, Cmt #, Author. Sort modes: New/Hot/Top/Date Range.
+- **Newsfeed** — Daily newsletters with summary bullets, issue breakdowns, prev/next navigation, collapsible sidebar (defaults collapsed).
+- **Roadmap** — "Release Roadmap" showing recent/upcoming vLLM releases.
+- **Resources** — Quarterly Roadmaps (10 roadmaps, H2 2023–Q1 2026), docs, community links.
 
 ### Age Classification
-Computed in `build_data.py`. Only open issues:
+Computed in `build_data.py:compute_longevity()`. Only open issues:
 | Label | Condition |
 |-------|-----------|
 | **New** | Open < 14 days |
-| **Long-running** | Open 90+ days, activity within 30 days |
+| **Long-running** | Open 90+ days, last activity within 30 days |
 | **Stale** | Open 90+ days, no activity in 30+ days |
+| _(blank)_ | Open 14–89 days, or closed issues |
+
+### Summarization Pipeline (prelims → finals → merge)
+Three-step pipeline per SIG, using Claude Opus with extended thinking (10K budget):
+
+**Step 1 — Prelims** (`dashboard-prelims`):
+- Select 100 issues per SIG via tiered sampling (reopened/high-engagement → recent → long-running → backfill)
+- Filter to actionable types: Bug, Feature Request, Usage/Question, Other (excludes RFC/Discussion)
+- Split into 10 batches of 10 issues each
+- Each batch gets full issue body (10K chars) + comment thread excerpts (5K chars)
+- LLM picks top 3 most pressing issues per batch → 30 issues per SIG
+
+**Step 2 — Finals** (`dashboard-finals`):
+- Re-reads the 30 top issues with full body + comments in a single prompt
+- Clusters by root cause (bugs) or capability theme (FRs), ranks top 15
+- Output: `main_fix`, `cluster_type`, `root_cause`, `severity`, `regression_from`, `priority`
+
+**Step 3 — Merge** (`dashboard-merge`):
+- Deduplicates clusters that describe the same root cause
+- Final output: top 15 clusters per SIG
 
 ### Deployment
 GitHub Pages via Actions workflow. Auto-deploys on push to `dashboard/**`.
 
 ## Cost
-| Step | Cost (Sonnet) |
-|------|---------------|
-| Full classify (~14.5k issues) | ~$9 |
-| Summarize (11 SIGs) | ~$3 |
-| Rank | ~$0.50 |
-| **Full pipeline** | **~$12.50** |
-| **Incremental daily** | **~$1-2** |
+| Step | Model | Cost |
+|------|-------|------|
+| Full classify (~14.5k issues) | Sonnet | ~$9 |
+| Prelims (10 batches × 11 SIGs) | Opus + thinking | ~$30 |
+| Finals (1 call × 11 SIGs) | Opus + thinking | ~$20 |
+| Merge (1 call × 11 SIGs) | Opus + thinking | ~$15 |
+| Rank (1 call) | Opus + thinking | ~$1 |
+| Enrich (batched) | Sonnet | ~$3 |
+| **Full pipeline** | | **~$78** |
+| **Incremental daily** | | **~$5-10** |
 
 ## What We Are Not Doing
 - Not building full user segmentation or account scoring
