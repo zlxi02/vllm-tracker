@@ -56,11 +56,19 @@ The 100 selected issues are split into 10 batches of 10. LLM (Opus with extended
 
 ### Newsfeed
 
-A daily LLM-generated digest of issue activity. Queries issues created or updated on the target date, sends them to the LLM with recent release context, and produces a structured newsletter with headline, themed sections, and bottom line editorial.
+A daily LLM-generated digest of issue activity.
 
-```
-SQLite query (day's issues) → LLM digest → JSON → render into dashboard HTML
-```
+**Input** — The LLM receives:
+- All issues created or updated on the target date (up to 60), each with title, body excerpt (300 chars), type, state, comment count, model tags, and hardware tags — sorted by engagement
+- The 3 most recent vLLM release notes (full text) for context on what shipped recently
+- The target date
+
+**Output** — A structured JSON digest with:
+- A punchy headline and "Today in vLLM:" opening
+- 3-5 themed sections grouping related issues (e.g. "Gemma 4 Bugs Continue", "MoE Infrastructure Growing Pains")
+- Per-issue entries with emoji, linked title, and 1-2 sentence description
+- An editorial "Bottom Line" takeaway
+- Stats (issue count, comments, closed)
 
 Each day is saved as a separate JSON file in `build/newsfeed/`. The HTML is rebuilt from all available day files on each run, so the archive grows over time.
 
