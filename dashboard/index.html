@@ -927,7 +927,7 @@ function daysSince(dateStr) {
 function hotScore(iss) { return (iss.nc + 1) / Math.pow(daysSince(iss.ca) + 2, 1.5); }
 function staleScore(iss) { return iss.s !== "open" ? -1 : daysSince(iss.ca) / (iss.nc + 1); }
 function sortList(list, tab) {
-  if (tab.sortMode === "new") {
+  if (tab.sortMode === "new" || tab.sortMode === "column") {
     list.sort((a, b) => {
       let va = a[tab.sortField], vb = b[tab.sortField];
       if (typeof va === "string") return va.localeCompare(vb) * tab.sortDir;
@@ -1267,7 +1267,7 @@ function renderTable(filtered, tab) {
 
   document.querySelectorAll("thead th").forEach(th => {
     th.classList.remove("sorted-asc", "sorted-desc");
-    if (tab.sortMode === "new" && th.dataset.sort === tab.sortField) {
+    if ((tab.sortMode === "new" || tab.sortMode === "column") && th.dataset.sort === tab.sortField) {
       th.classList.add(tab.sortDir === 1 ? "sorted-asc" : "sorted-desc");
     }
   });
@@ -1538,7 +1538,7 @@ document.querySelectorAll("thead th").forEach(th => {
       openColumnFilter(th, filterCol);
     } else if (sortCol) {
       const tab = getTab();
-      tab.sortMode = "new";
+      tab.sortMode = "column";
       if (tab.sortField === sortCol) tab.sortDir *= -1;
       else { tab.sortField = sortCol; tab.sortDir = sortCol === "ca" || sortCol === "nc" ? -1 : 1; }
       applyFilters();
