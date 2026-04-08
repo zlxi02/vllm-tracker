@@ -126,7 +126,13 @@ Computed in `build_data.py:compute_longevity()`. Only open issues:
 Three-step pipeline per SIG, using Claude Opus with extended thinking (10K budget):
 
 **Step 1 — Prelims** (`dashboard-prelims`):
-- Select 100 issues per SIG via tiered sampling (reopened/high-engagement → recent → long-running → backfill)
+- Select 100 issues per SIG via 6-tier sampling that progressively relaxes engagement and recency filters:
+  - T1: Top 10% comments + active 30d + open 90+ days
+  - T2: Top 33% comments + active 30d + open 45+ days
+  - T3: Top 10% comments + active 30d
+  - T4: Top 33% comments + active 30d
+  - T5: Any activity within 30d
+  - T6: Backfill by recency
 - Filter to actionable types: Bug, Feature Request, Usage/Question, Other (excludes RFC/Discussion)
 - Split into 10 batches of 10 issues each
 - Each batch gets full issue body (10K chars) + comment thread excerpts (5K chars)

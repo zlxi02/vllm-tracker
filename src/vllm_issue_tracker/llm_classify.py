@@ -302,7 +302,8 @@ async def dashboard_classify_all(
     ]
 
     raw_responses = await _run_concurrent(
-        llm, classify_prompts, desc="Dashboard classify"
+        llm, classify_prompts, desc="Dashboard classify",
+        model_override=llm.sonnet_model, thinking_budget=0
     )
 
     classified = 0
@@ -424,21 +425,27 @@ def _load_comment_bodies(settings: "Settings", issue_ids: set[str]) -> dict[str,
 def _tiered_select(issues: list[dict], cap: int) -> list[dict]:
     """Select up to `cap` issues using tiered priority sampling.
 
-    Tier 1: Reopened or high-engagement (top 10% by comments) — always include.
-    Tier 2: Created in last 30 days — fill next.
-    Tier 3: Long-running (90+ days open) with recent activity (last 30 days) — fill next.
-    Tier 4: Everything else by recency — backfill remainder.
+    Tiers progressively relax engagement and recency filters:
+    Tier 1: Top 10% comments + activity within 30d + open 90+ days
+    Tier 2: Top 33% comments + activity within 30d + open 45+ days
+    Tier 3: Top 10% comments + activity within 30d
+    Tier 4: Top 33% comments + activity within 30d
+    Tier 5: Activity within 30d
+    Tier 6: Everything else by recency
     """
     from datetime import datetime, timedelta
 
     now = datetime.utcnow()
     thirty_days_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    forty_five_days_ago = (now - timedelta(days=45)).strftime("%Y-%m-%d")
     ninety_days_ago = (now - timedelta(days=90)).strftime("%Y-%m-%d")
 
-    # Compute comment threshold for top 10%
+    # Compute comment thresholds
     sorted_by_comments = sorted(issues, key=lambda i: i["comments"], reverse=True)
     top10_idx = max(1, len(issues) // 10)
-    comment_threshold = sorted_by_comments[top10_idx - 1]["comments"]
+    top33_idx = max(1, len(issues) // 3)
+    top10_threshold = sorted_by_comments[top10_idx - 1]["comments"]
+    top33_threshold = sorted_by_comments[top33_idx - 1]["comments"]
 
     selected: list[dict] = []
     seen: set[int] = set()
@@ -450,28 +457,54 @@ def _tiered_select(issues: list[dict], cap: int) -> list[dict]:
         selected.append(issue)
         return True
 
-    # Tier 1: Reopened or high-engagement
+    def _is_active(iss: dict, cutoff: str) -> bool:
+        return iss["updated_at"] >= cutoff
+
+    def _is_long_running(iss: dict, cutoff: str) -> bool:
+        return iss["created_at"] < cutoff
+
+    # Tier 1: Top 10% comments + active 30d + open 90+ days
     for iss in issues:
         if len(selected) >= cap:
             break
-        if iss["reopens"] > 0 or iss["comments"] >= comment_threshold:
+        if (iss["comments"] >= top10_threshold
+                and _is_active(iss, thirty_days_ago)
+                and _is_long_running(iss, ninety_days_ago)):
             _add(iss)
 
-    # Tier 2: Created in last 30 days (already sorted by created_at DESC)
+    # Tier 2: Top 33% comments + active 30d + open 45+ days
     for iss in issues:
         if len(selected) >= cap:
             break
-        if iss["created_at"] >= thirty_days_ago:
+        if (iss["comments"] >= top33_threshold
+                and _is_active(iss, thirty_days_ago)
+                and _is_long_running(iss, forty_five_days_ago)):
             _add(iss)
 
-    # Tier 3: Long-running (90+ days) with recent activity
+    # Tier 3: Top 10% comments + active 30d
     for iss in issues:
         if len(selected) >= cap:
             break
-        if iss["created_at"] < ninety_days_ago and iss["updated_at"] >= thirty_days_ago:
+        if (iss["comments"] >= top10_threshold
+                and _is_active(iss, thirty_days_ago)):
             _add(iss)
 
-    # Tier 4: Backfill by recency
+    # Tier 4: Top 33% comments + active 30d
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        if (iss["comments"] >= top33_threshold
+                and _is_active(iss, thirty_days_ago)):
+            _add(iss)
+
+    # Tier 5: Any activity within 30d
+    for iss in issues:
+        if len(selected) >= cap:
+            break
+        if _is_active(iss, thirty_days_ago):
+            _add(iss)
+
+    # Tier 6: Backfill by recency
     for iss in issues:
         if len(selected) >= cap:
             break
@@ -824,6 +857,7 @@ async def dashboard_finals(
     prompts = []
     prompt_sigs = []
     issue_last_activity: dict[int, str] = {}  # issue_number -> last_activity date
+    sig_valid_issue_nums: dict[str, set[int]] = {}  # sig -> set of valid issue numbers
 
     for sig_data in sig_prelims:
         sig = sig_data["sig_group"]
@@ -873,6 +907,10 @@ async def dashboard_finals(
         sig_desc = sig_lookup.get(sig, "")
         roadmap_ctx = sig_roadmap_sections.get(sig, f"No specific roadmap section found for {sig}.")
 
+        # Track which issue numbers belong to this SIG
+        sig_valid_nums = {iss["issue_number"] for iss in issues}
+        sig_valid_issue_nums[sig] = sig_valid_nums
+
         # Build lookup for last_activity per issue number
         for iss in issues:
             issue_last_activity[iss["issue_number"]] = iss.get("last_activity", "")
@@ -911,6 +949,17 @@ async def dashboard_finals(
             continue
         if isinstance(parsed, dict):
             ranked = parsed.get("ranked_issues", [])
+            if not ranked:
+                print(f"  Warning: {sig} returned 0 ranked_issues. Keys in response: {list(parsed.keys())}")
+                if len(str(parsed)) < 500:
+                    print(f"  Response: {parsed}")
+            # Filter out hallucinated issue numbers not in this SIG's input
+            valid_nums = sig_valid_issue_nums.get(sig, set())
+            if valid_nums:
+                before = len(ranked)
+                ranked = [r for r in ranked if r.get("number") in valid_nums]
+                if len(ranked) < before:
+                    print(f"  Warning: {sig} had {before - len(ranked)} hallucinated issue(s) removed")
             ranked.sort(key=lambda c: c.get("priority", 999))
             ranked = ranked[:15]
 
@@ -940,10 +989,24 @@ async def dashboard_finals(
     if errors:
         print(f"Warning: {errors} finals had parse errors")
 
-    # Write dashboard_summary.json
-    result = {"sig_summaries": sig_summaries}
+    # Write dashboard_summary.json — merge with existing if running for a single SIG
     output_path = settings.build_dir / "dashboard_summary.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if sig_filter and output_path.exists():
+        # Merge: load existing, replace just the filtered SIG(s)
+        existing = json.loads(output_path.read_text(encoding="utf-8"))
+        existing_summaries = existing.get("sig_summaries", [])
+        updated_sigs = {s["sig_group"] for s in sig_summaries}
+        # Keep existing SIGs that weren't re-run
+        merged = [s for s in existing_summaries if s["sig_group"] not in updated_sigs]
+        merged.extend(sig_summaries)
+        # Preserve existing executive_summary and ranking
+        result = existing
+        result["sig_summaries"] = merged
+    else:
+        result = {"sig_summaries": sig_summaries}
+
     output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"Finals written to {finals_dir}/ and {output_path}")
@@ -1389,7 +1452,7 @@ async def generate_newsfeed(
             issues_block=issues_block,
         )
 
-        raw = await _call_llm(llm, prompt, max_tokens=8192)
+        raw = await _call_llm(llm, prompt, max_tokens=8192, thinking_budget=0)
         digest = _parse_json_response(raw)
         digest["date"] = date_str
         digest["date_display"] = date_display

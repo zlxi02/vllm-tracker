@@ -56,7 +56,7 @@ Three-step pipeline, each independently executable via CLI with `--sig` filter:
 - **Finals** (`dashboard-finals`): 30 issues in one prompt, cluster + rank → top 15 clusters.
 - **Merge** (`dashboard-merge`): Deduplicate clusters with same root cause.
 - **Model**: Opus with extended thinking (10K budget) for all three steps. Sonnet for enrich.
-- **Issue selection**: 100 per SIG, filtered to Bug/FR/Usage/Other, tiered sampling.
+- **Issue selection**: 100 per SIG, filtered to Bug/FR/Usage/Other. 6-tier sampling: T1 (top 10% comments + active 30d + open 90d) → T2 (top 33% + active 30d + open 45d) → T3-T4 (engagement + active) → T5 (any activity 30d) → T6 (backfill).
 - **Comment bodies**: Loaded from `data/issue_comments_body.csv` (1.4M rows).
 
 ### Key data

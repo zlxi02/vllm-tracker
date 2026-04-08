@@ -44,7 +44,7 @@ def build_roadmap_report(settings: Settings) -> Path:
             if all_nums:
                 placeholders = ",".join("?" for _ in all_nums)
                 rows = conn.execute(
-                    f"SELECT issue_number, title, body, url, created_at, number_of_comments FROM issues WHERE issue_number IN ({placeholders})",
+                    f"SELECT issue_number, title, body, url, created_at, updated_at, number_of_comments FROM issues WHERE issue_number IN ({placeholders})",
                     list(all_nums),
                 ).fetchall()
                 for row in rows:
@@ -56,6 +56,7 @@ def build_roadmap_report(settings: Settings) -> Path:
                         "body_preview": body,
                         "url": row["url"] or f"{GITHUB_BASE}{row['issue_number']}",
                         "created_at": (row["created_at"] or "")[:10],
+                        "updated_at": (row["updated_at"] or "")[:10],
                         "comments": row["number_of_comments"] or 0,
                     }
         finally:
@@ -410,7 +411,7 @@ def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[in
     enrichment = enrichments.get(issue_num, {}) if enrichments else {}
     url = details.get("url", f"{GITHUB_BASE}{issue_num}")
     created = details.get("created_at", "")
-    last_activity = cluster.get("last_activity", "")
+    last_activity = cluster.get("last_activity", "") or details.get("updated_at", "")
     comments = details.get("comments", 0)
 
     # Use short_title from enrichment if available, fall back to main_fix
@@ -455,7 +456,7 @@ def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[in
       <td class="col-issue"><a href="{html.escape(url)}" target="_blank" onclick="event.stopPropagation()">#{issue_num}</a></td>
       <td class="col-date">{created}</td>
       <td class="col-date">{last_activity}</td>
-      <td class="col-cmt">{comments if comments else ""}</td>
+      <td class="col-cmt">{comments}</td>
       <td class="col-tags">{tags_html}</td>
     </tr>
     <tr class="detail-row" id="{cid}-detail" style="display:none;">
