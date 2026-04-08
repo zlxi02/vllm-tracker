@@ -54,15 +54,6 @@ The 100 selected issues are split into 10 batches of 10. LLM (Opus with extended
 
 **Build** — Renders the triage report HTML (top 5 issues visible per SIG, 6-15 behind "show more"). Each issue shows its short title, creation date, last activity, comment count, and model/hardware tags. Expanding a row reveals the problem, why it matters, workaround, and likely solve.
 
-### Newsfeed
-
-Daily LLM-generated digest. **Input**: that day's issues (up to 60, sorted by engagement) + last 3 release notes for context. **Output**: headline, "Today in vLLM:" opening, 3-5 themed sections with per-issue summaries, and a "Bottom Line" editorial.
-
-```bash
-python3 -m vllm_issue_tracker.cli generate-newsfeed                          # today
-python3 -m vllm_issue_tracker.cli generate-newsfeed --date 2026-04-05 --days 4  # backfill
-```
-
 ### Running the pipeline
 
 | Step | Command | Description | Time | Cost | Model |
@@ -88,3 +79,12 @@ python3 -m vllm_issue_tracker.cli dashboard-finals --sig "Core Engine"
 ```
 
 Each step saves intermediate results per SIG (`build/prelims/`, `build/finals/`), so individual SIGs can be re-run without affecting others. Load and classify are incremental by default — only new or changed issues are processed.
+
+### Newsfeed
+
+Daily LLM-generated digest. **Input**: that day's issues (up to 60, sorted by engagement) + last 3 release notes for context. **Output**: headline, "Today in vLLM:" opening, 3-5 themed sections with per-issue summaries, and a "Bottom Line" editorial.
+
+```bash
+python3 -m vllm_issue_tracker.cli generate-newsfeed                          # today
+python3 -m vllm_issue_tracker.cli generate-newsfeed --date 2026-04-05 --days 4  # backfill
+```
