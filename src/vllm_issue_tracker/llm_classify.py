@@ -426,6 +426,8 @@ def _tiered_select(issues: list[dict], cap: int) -> list[dict]:
     """Select up to `cap` issues using tiered priority sampling.
 
     Tiers progressively relax engagement and recency filters:
+    looking for: Engagement / Recency / Recurring
+    
     Tier 1: Top 10% comments + activity within 30d + open 90+ days
     Tier 2: Top 33% comments + activity within 30d + open 45+ days
     Tier 3: Top 10% comments + activity within 30d
@@ -754,9 +756,12 @@ async def dashboard_prelims(
         sig_desc = sig_lookup.get(sig, "")
         roadmap_ctx = sig_roadmap_sections.get(sig, f"No specific roadmap section found for {sig}.")
 
-        # Batches of 10
+        # Interleave issues across batches so each batch gets a mix of tiers
         batch_size = 10
-        batches = [issues[i:i + batch_size] for i in range(0, len(issues), batch_size)]
+        num_batches = (len(issues) + batch_size - 1) // batch_size
+        batches = [[] for _ in range(num_batches)]
+        for i, iss in enumerate(issues):
+            batches[i % num_batches].append(iss)
         for batch in batches:
             prompts.append(
                 PRELIMS_SUMMARIZE.format(
@@ -1178,27 +1183,78 @@ async def dashboard_rank_and_summarize(
     ).fetchall():
         sig_issue_counts[row["sig_group"]] = row["cnt"]
 
-    # Build the SIG summaries block for the ranking prompt
+    # Collect all issue numbers from the summaries to fetch metadata from DB
+    all_issue_nums = set()
+    for sig_data in sig_summaries:
+        for cluster in sig_data.get("clusters", []):
+            for iss in cluster.get("issues", []):
+                all_issue_nums.add(iss["number"])
+
+    # Fetch issue metadata from DB
+    issue_meta: dict[int, dict] = {}
+    if all_issue_nums:
+        placeholders = ",".join("?" * len(all_issue_nums))
+        rows = conn.execute(
+            f"""SELECT issue_number, created_at, number_of_comments, model_tags, hardware_tags
+            FROM issues WHERE issue_number IN ({placeholders})""",
+            list(all_issue_nums),
+        ).fetchall()
+        for row in rows:
+            issue_meta[row["issue_number"]] = {
+                "created": (row["created_at"] or "")[:10],
+                "comments": row["number_of_comments"] or 0,
+                "models": row["model_tags"] or "General",
+                "hardware": row["hardware_tags"] or "General",
+            }
+
+    # Build SIG description lookup
+    sig_desc_lookup = {ws["name"]: ws["description"] for ws in WORKSTREAM_THEMES}
+
+    # Build the SIG summaries block with all issues
     sig_block_parts = []
     for sig_data in sig_summaries:
         sig = sig_data["sig_group"]
         clusters = sig_data.get("clusters", [])
         total = sig_issue_counts.get(sig, 0)
-        top_clusters = [c.get("main_fix", "") for c in clusters[:5]]
+        sig_desc = sig_desc_lookup.get(sig, "")
+
+        issue_lines = []
+        for cluster in clusters:
+            iss_num = cluster["issues"][0]["number"] if cluster.get("issues") else 0
+            meta = issue_meta.get(iss_num, {})
+            main_fix = cluster.get("main_fix", "")
+            why = cluster.get("why_pressing", "")
+            ctype = cluster.get("cluster_type", "bug")
+            regression = cluster.get("regression_from") or ""
+            comments = meta.get("comments", 0)
+            created = meta.get("created", "")
+            models = meta.get("models", "General")
+            hardware = meta.get("hardware", "General")
+
+            line = f"  #{iss_num} [{ctype}] [comments: {comments}] [created: {created}] [models: {models}] [hw: {hardware}]"
+            if regression:
+                line += f" [regression: {regression}]"
+            line += f"\n    Problem: {main_fix}"
+            if why:
+                line += f"\n    Why pressing: {why}"
+            issue_lines.append(line)
+
         sig_block_parts.append(
             f"SIG: {sig}\n"
-            f"  Total issues: {total}\n"
-            f"  Clusters: {len(clusters)}\n"
-            f"  Top clusters:\n"
-            + "\n".join(f"    - {c}" for c in top_clusters)
+            f"  Description: {sig_desc}\n"
+            f"  Total open issues: {total}\n"
+            f"  Top {len(clusters)} triaged issues:\n"
+            + "\n".join(issue_lines)
         )
     sig_summaries_block = "\n\n".join(sig_block_parts)
 
     print("Ranking SIGs and generating executive summary...")
+    release_notes = _fetch_release_notes()
     full_roadmap, _ = _fetch_current_roadmap()
     rank_prompt = RANK_AND_SUMMARIZE_ROADMAP.format(
         sig_summaries_block=sig_summaries_block,
         roadmap_context=full_roadmap,
+        release_notes=release_notes,
     )
     rank_response = await _call_llm(llm, rank_prompt, max_tokens=16384)
 

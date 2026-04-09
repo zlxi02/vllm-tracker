@@ -6,13 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .classify import (
-    classify_failure_mode_with_fallback,
-    classify_roadmap_tag_with_fallback,
-    extract_tag,
-    normalize_text,
-    summarize_issue,
-)
 from .config import Settings
 
 
@@ -184,13 +177,6 @@ def _parse_csv_row(row: dict) -> tuple | None:
 
     body = row.get("body") or ""
     labels_raw = (row.get("labels") or "").strip()
-    title_text = normalize_text(title)
-    text = normalize_text(title, body[:1000])
-    model_tag = extract_tag(text, "model")
-    hardware_tag = extract_tag(text, "hardware")
-    failure_mode_key, failure_mode_label = classify_failure_mode_with_fallback(title_text, text)
-    roadmap_tag = classify_roadmap_tag_with_fallback(title_text, text)
-    summary_text = summarize_issue(title, failure_mode_label, model_tag, hardware_tag)
     issue_type = parse_issue_type_from_labels(labels_raw)
 
     return (
@@ -211,12 +197,12 @@ def _parse_csv_row(row: dict) -> tuple | None:
         parse_float(row.get("days_issue_open")),
         parse_int(row.get("number_of_times_reopened")),
         (row.get("repository") or "").strip(),
-        model_tag,
-        hardware_tag,
-        failure_mode_key,
-        failure_mode_label,
-        roadmap_tag,
-        summary_text,
+        "",  # model_tag (legacy, unused)
+        "",  # hardware_tag (legacy, unused)
+        "",  # failure_mode_key (legacy, unused)
+        "",  # failure_mode_label (legacy, unused)
+        "",  # roadmap_tag (legacy, unused)
+        "",  # summary_text (legacy, unused)
         issue_type,
     )
 

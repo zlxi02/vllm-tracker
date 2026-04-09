@@ -417,14 +417,19 @@ def _render_roadmap_cluster_row(cluster: dict, rank: int, issue_details: dict[in
     # Use short_title from enrichment if available, fall back to main_fix
     display_title = html.escape(enrichment.get("short_title", "")) or main_fix
 
-    # Tags
+    # Tags — handle both dict {"models":[], "hardware":[]} and flat list formats
     pills = []
-    for m in categories.get("models", [])[:2]:
-        if m and m != "General":
-            pills.append(f'<span class="tag tag-model">{html.escape(m)}</span>')
-    for h in categories.get("hardware", [])[:2]:
-        if h and h != "General":
-            pills.append(f'<span class="tag tag-hw">{html.escape(h)}</span>')
+    if isinstance(categories, dict):
+        for m in categories.get("models", [])[:2]:
+            if m and m != "General":
+                pills.append(f'<span class="tag tag-model">{html.escape(m)}</span>')
+        for h in categories.get("hardware", [])[:2]:
+            if h and h != "General":
+                pills.append(f'<span class="tag tag-hw">{html.escape(h)}</span>')
+    elif isinstance(categories, list):
+        for tag in categories[:3]:
+            if tag and tag.lower() not in ("bug", "feature request", "general"):
+                pills.append(f'<span class="tag tag-model">{html.escape(str(tag))}</span>')
     tags_html = "\n".join(pills)
 
     # Expandable detail row

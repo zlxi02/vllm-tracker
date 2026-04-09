@@ -302,35 +302,41 @@ LLM inference engine.
 CURRENT QUARTER ROADMAP — official planned objectives from the vLLM team:
 {roadmap_context}
 
-Use the roadmap above to understand what the team has committed to. When \
-ranking SIGs, weigh issues that block or undermine roadmap objectives \
-more heavily. Call out in the executive summary when a cluster of open \
-issues threatens a planned milestone.
+RECENT RELEASES:
+{release_notes}
 
-Below are the SIG group summaries from the current issue pool. Each entry \
-shows the SIG name, total issue count, number of clusters, and the top 5 \
-cluster headlines.
+Use the roadmap and releases above to understand what the team has \
+committed to and what has shipped. When ranking SIGs, weigh issues that \
+block roadmap objectives or are regressions from recent releases more \
+heavily.
+
+Below are all 11 SIG groups with their top triaged issues. Each issue \
+includes: type, comment count, creation date, model/hardware tags, the \
+synthesized problem description, and why it's pressing now. Issues \
+marked [regression] broke in a recent release.
 
 {sig_summaries_block}
 
 YOUR TASK:
 
-1. RANK the SIG groups by priority for the roadmap. Consider:
-   - Strategic importance to vLLM's mission and roadmap
-   - Issue volume and severity (more critical bugs = higher priority)
-   - User impact (issues affecting more users or key enterprise deployments)
-   - Momentum (areas with many recent/trending issues)
-   Weight strategic importance and user impact more heavily than raw issue count.
+1. RANK the SIG groups by priority. Consider:
+   - Does this SIG have issues BLOCKING roadmap objectives? (highest weight)
+   - Does this SIG have REGRESSIONS from recent releases? (high weight)
+   - Severity and user impact across the triaged issues (crashes > wrong output > perf)
+   - Comment counts and engagement (proxy for user pain)
+   - Cross-SIG patterns (if the same model/hardware is broken across multiple SIGs)
+   Weight roadmap impact and regressions more heavily than raw issue count.
 
-2. WRITE an executive summary (4-8 bullet points) for the entire roadmap:
+2. WRITE an executive summary (3-5 bullet points):
    - Each bullet has a "topic" (short bold label, 2-5 words) and "detail" \
-(one sentence explaining what is happening and why it matters)
+(1-2 sentences explaining what is happening and why it matters)
    - Lead with the single most critical finding across all SIGs
-   - Highlight cross-cutting themes (e.g. "Blackwell support issues span 3 SIGs")
-   - Call out the most severe user-facing problems
-   - Note any emerging trends or areas of concern
-   - Be specific and actionable — an engineering leader should read this and \
-know what to prioritize this week
+   - Reference specific issue numbers and models/hardware when possible
+   - Highlight cross-SIG themes (e.g. "FP8 quantization bugs in 3 SIGs", \
+"Blackwell support gaps across Core Engine + Install + Performance")
+   - Call out regressions from recent releases
+   - Note what this means for the roadmap (e.g. "V2 runner rollout blocked by...")
+   - An engineering leader should read this and know what to prioritize this week
    - Do NOT just list SIG names — synthesize across them
 
 Return JSON only — no markdown fences, no commentary:
@@ -343,8 +349,8 @@ Return JSON only — no markdown fences, no commentary:
     }}
   ],
   "executive_summary": [
-    {{"topic": "Short bold topic label", "detail": "What is happening and why it matters"}},
-    {{"topic": "Another topic", "detail": "Explanation of the issue"}}
+    {{"topic": "Short bold topic label", "detail": "1-2 sentences with specific issue references"}},
+    {{"topic": "Another topic", "detail": "Explanation with model/hardware specifics"}}
   ]
 }}
 """

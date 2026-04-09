@@ -126,17 +126,6 @@ MODEL_PATTERNS = [
     (re.compile(r"\b(granite)\b", re.I), "Granite"),
 ]
 
-FAILURE_PATTERNS = [
-    (re.compile(r"\b(crash|segfault|sigkill|sigsegv|core.dump|abort|fatal)\b", re.I), "Crash"),
-    (re.compile(r"\b(oom|out.of.memory|cuda.out.of.memory|memory.error|kv.cache.full)\b", re.I), "OOM"),
-    (re.compile(r"\b(slow|latency|throughput|performance|regression|ttft|tpot|tokens.per.second)\b", re.I), "Performance"),
-    (re.compile(r"\b(install|pip|build.from.source|setup\.py|cmake|compilation.error)\b", re.I), "Install"),
-    (re.compile(r"\b(compile|triton|kernel|torch\.compile|inductor)\b", re.I), "Compile"),
-    (re.compile(r"\b(incorrect.output|wrong.output|garbage|hallucin|mismatch|accuracy)\b", re.I), "Incorrect Output"),
-    (re.compile(r"\b(hang|deadlock|stuck|freeze|timeout|unresponsive)\b", re.I), "Hang"),
-    (re.compile(r"\b(distributed|multi.node|ray|tensor.parallel|pipeline.parallel|nccl)\b", re.I), "Distributed"),
-    (re.compile(r"\b(tool.call|function.call|structured.output|json.schema|guided.decoding)\b", re.I), "Tool/Structured"),
-]
 
 
 def infer_issue_type(title):
@@ -244,7 +233,6 @@ def process_issues():
                 "ty": infer_issue_type(title),
                 "hw": match_patterns(search_text, HARDWARE_PATTERNS),
                 "mo": match_patterns(search_text, MODEL_PATTERNS),
-                "fm": match_patterns(search_text, FAILURE_PATTERNS),
                 "sig": "",  # not available without LLM classification
                 "lo": longevity,
             }
@@ -260,7 +248,6 @@ def build_filter_options(issues):
     types = set()
     hardware = set()
     models = set()
-    failure_modes = set()
     sigs = set()
 
     for iss in issues:
@@ -269,8 +256,6 @@ def build_filter_options(issues):
             hardware.add(h)
         for m in iss["mo"]:
             models.add(m)
-        for fm in iss["fm"]:
-            failure_modes.add(fm)
         if iss.get("sig"):
             sigs.add(iss["sig"])
 
@@ -278,7 +263,6 @@ def build_filter_options(issues):
         "types": sorted(types),
         "hardware": sorted(hardware),
         "models": sorted(models),
-        "failure_modes": sorted(failure_modes),
         "sigs": sorted(sigs),
     }
 
@@ -369,7 +353,7 @@ def process_issues_from_sqlite():
         SELECT issue_id, issue_number, title, body, state, created_at, updated_at, closed_at,
                url, creator_login, creator_company, labels, number_of_comments,
                days_issue_open, number_of_times_reopened,
-               issue_type, sig_group, model_tags, hardware_tags, failure_mode_key
+               issue_type, sig_group, model_tags, hardware_tags
         FROM issues
         ORDER BY created_at DESC
         """
@@ -420,10 +404,6 @@ def process_issues_from_sqlite():
         if hardware_tags == ["General"]:
             hardware_tags = []
 
-        # Failure modes: still use regex since LLM doesn't classify these
-        search_text = f"{title} {body}"
-        failure_modes = match_patterns(search_text, FAILURE_PATTERNS)
-
         # Compute longevity label from age + last activity
         days_open = row["days_issue_open"] or 0
         last_act = last_comment.get(row["issue_id"]) or row["created_at"] or ""
@@ -454,7 +434,6 @@ def process_issues_from_sqlite():
             "ty": issue_type,
             "hw": hardware_tags,
             "mo": model_tags,
-            "fm": failure_modes,
             "sig": sig_group,
             "lo": longevity,
         }
@@ -477,7 +456,6 @@ def main():
     print(f"  Types: {filters['types']}")
     print(f"  Hardware: {filters['hardware']}")
     print(f"  Models: {filters['models']}")
-    print(f"  Failure modes: {filters['failure_modes']}")
     if filters.get("sigs"):
         print(f"  SIG groups: {filters['sigs']}")
 

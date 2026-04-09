@@ -1163,7 +1163,7 @@ function renderExpandedCard(iss, bodyText) {
         <div class="exp-body">
           <h2 style="margin-top:0"><a href="${esc(iss.url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">#${iss.n}: ${esc(iss.t)}</a></h2>
           ${bodyHtml}
-          ${isTruncated ? `<a class="view-full" href="${esc(iss.url)}" target="_blank" rel="noopener">View full issue on GitHub &rarr;</a>` : ""}
+          <a class="view-full" href="${esc(iss.url)}" target="_blank" rel="noopener">${isTruncated ? "View full issue on GitHub" : "View on GitHub"} &rarr;</a>
         </div>
       </div>
       <div class="exp-resize-handle" data-resize="${iss.n}"></div>
@@ -1446,7 +1446,7 @@ function renderTabs() {
     const div = document.createElement("div");
     div.className = "search-tab" + (tab.id === activeTabId ? " active" : "");
     div.innerHTML = `<span class="tab-label">${esc(tab.label)}</span><span class="tab-count">${filtered.length.toLocaleString()}</span>${tabs.length > 1 ? `<span class="tab-close">&times;</span>` : ""}`;
-    div.querySelector(".tab-label").addEventListener("click", () => switchTab(tab.id));
+    div.addEventListener("click", () => switchTab(tab.id));
     const closeBtn = div.querySelector(".tab-close");
     if (closeBtn) closeBtn.addEventListener("click", (e) => { e.stopPropagation(); closeTab(tab.id); });
     el.appendChild(div);
