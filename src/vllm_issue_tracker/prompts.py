@@ -636,7 +636,7 @@ def format_dashboard_issues_block(issues: list[dict]) -> str:
     for issue in issues:
         number = issue["issue_number"]
         title = issue.get("title", "").replace("\n", " ").strip()
-        body = issue.get("body", "").replace("\n", " ").strip()[:200]
+        body = issue.get("body", "").replace("\n", " ").strip()[:2000]
         known_type = issue.get("issue_type") or "NONE"
         lines.append(f"ISSUE {number} [known_type: {known_type}] | {title} | {body}")
     return "\n".join(lines)
