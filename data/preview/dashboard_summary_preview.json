@@ -1,0 +1,24 @@
+{
+  "sig_summaries": [
+    {
+      "sig_group": "Core Engine",
+      "clusters": [
+        {
+          "main_fix": "Preview sample — run full pipeline locally for LLM output",
+          "priority": 1,
+          "issues": [
+            {
+              "number": 38736,
+              "summary": "Model initialization / config compatibility (preview data)"
+            }
+          ],
+          "categories": {
+            "type": "Bug",
+            "models": [],
+            "hardware": []
+          }
+        }
+      ]
+    }
+  ]
+}

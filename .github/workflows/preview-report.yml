@@ -1,3 +1,6 @@
+# Builds a static HTML roadmap from preview CSVs + checked-in summary JSON.
+# No third-party LLM calls — full LLM pipelines (refresh, newsfeed) run locally only.
+
 name: Preview Report
 
 on:
@@ -13,15 +16,18 @@ jobs:
           python-version: "3.12"
       - name: Materialize preview data
         run: |
-          mkdir -p data
+          mkdir -p data build
           cp data/preview/github_issues_preview.csv data/github_issues.csv
           cp data/preview/users_preview.csv data/users.csv
           cp data/preview/issue_comments_preview.csv data/issue_comments.csv
-      - name: Build preview report
-        run: PYTHONPATH=src python -m vllm_issue_tracker.cli refresh
+          cp data/preview/dashboard_summary_preview.json build/dashboard_summary.json
+      - name: Load SQLite and build report
+        run: |
+          pip install -e .
+          PYTHONPATH=src python -m vllm_issue_tracker.cli load
+          PYTHONPATH=src python -m vllm_issue_tracker.cli build-roadmap
       - name: Upload preview report
         uses: actions/upload-artifact@v4
         with:
           name: preview-report
-          path: outputs/report.html
-
+          path: outputs/roadmap.html
